@@ -1,0 +1,52 @@
+{
+  "name": "sso",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 8122",
+    "build": "next build",
+    "start": "next start --port 8122",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio",
+    "db:encrypt-existing": "tsx prisma/encrypt-existing.ts",
+    "i18n:check": "tsx scripts/i18n-check.ts"
+  },
+  "prisma": {
+    "seed": "npx tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@ip-location-db/geo-whois-asn-country-mmdb": "^2.3.2026061719",
+    "@prisma/client": "^6.3.0",
+    "@simplewebauthn/browser": "^11.0.0",
+    "@simplewebauthn/server": "^11.0.0",
+    "bcryptjs": "^2.4.3",
+    "jose": "^5.9.0",
+    "maxmind": "^5.0.7",
+    "next": "^15.5.28",
+    "nodemailer": "^10.1.7",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sharp": "^0.34.5",
+    "sonner": "^2.0.8",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "prisma": "^6.3.0",
+    "tailwindcss": "^3.4.15",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}

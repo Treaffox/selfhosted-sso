@@ -1,0 +1,20 @@
+# Beispiel-Anwendung (Express), die sich per App-Token-Flow beim SSO anmeldet.
+# Sie dient zum Ausprobieren der Integration und als Vorlage für eigene Apps.
+#   Start: docker compose -f docker-compose.example-app.yml up -d --build
+# Vorher im Admin-Bereich eine App anlegen (Admin → Apps) und SSO_APP_ID / SSO_APP_TOKEN in die .env eintragen.
+
+services:
+  test-app:
+    build:
+      context: ./test-app
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8123:8123"
+    environment:
+      - NODE_ENV=production
+      - SSO_URL=${APP_URL:?APP_URL fehlt in der .env}
+      - SSO_APP_ID=${SSO_APP_ID:-}
+      - SSO_APP_TOKEN=${SSO_APP_TOKEN:-}
+      - APP_URL=${TEST_APP_URL:-http://localhost:8123}
+      - APP_PORT=8123

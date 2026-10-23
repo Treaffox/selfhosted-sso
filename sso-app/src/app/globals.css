@@ -1,0 +1,168 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 5 5 5;
+  --surface: 10 10 10;
+  --surface-light: 17 17 17;
+  --surface-lighter: 26 26 26;
+  --border: 34 34 34;
+  --border-light: 51 51 51;
+  --foreground: 255 255 255;
+  --muted: 136 136 136;
+  --danger: 229 72 77;
+  --success: 48 164 108;
+  --warning: 234 179 8;
+  --accent: 255 255 255;
+  --accent-foreground: 0 0 0;
+}
+
+/* No stored preference yet: follow the OS setting, unless the user has
+   explicitly picked dark (ThemeToggle then sets data-theme="dark"). */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --background: 255 255 255;
+    --surface: 250 250 250;
+    --surface-light: 255 255 255;
+    --surface-lighter: 241 241 241;
+    --border: 224 224 224;
+    --border-light: 204 204 204;
+    --foreground: 10 10 10;
+    --muted: 107 107 107;
+    --danger: 210 30 40;
+    --success: 15 122 79;
+    --warning: 161 98 7;
+    --accent: 10 10 10;
+    --accent-foreground: 255 255 255;
+  }
+}
+
+/* Explicit choice (via ThemeToggle) always wins over the OS setting. */
+:root[data-theme="light"] {
+  --background: 255 255 255;
+  --surface: 250 250 250;
+  --surface-light: 255 255 255;
+  --surface-lighter: 241 241 241;
+  --border: 224 224 224;
+  --border-light: 204 204 204;
+  --foreground: 10 10 10;
+  --muted: 107 107 107;
+  --danger: 210 30 40;
+  --success: 15 122 79;
+  --warning: 161 98 7;
+  --accent: 10 10 10;
+  --accent-foreground: 255 255 255;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  html:not([data-theme="dark"]) {
+    color-scheme: light;
+  }
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  background: rgb(var(--background));
+  color: rgb(var(--foreground));
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Brand logo (Admin → System → Erscheinungsbild): the main logo is made for the dark theme. With a separate
+   light-background logo the two are swapped; without one, the single logo is inverted on the light theme. */
+.brand-logo-light {
+  display: none;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .brand-logo-dark {
+    display: none;
+  }
+  :root:not([data-theme="dark"]) .brand-logo-light {
+    display: block;
+  }
+  :root:not([data-theme="dark"]) .brand-logo-auto {
+    filter: invert(1);
+  }
+}
+:root[data-theme="light"] .brand-logo-dark {
+  display: none;
+}
+:root[data-theme="light"] .brand-logo-light {
+  display: block;
+}
+:root[data-theme="light"] .brand-logo-auto {
+  filter: invert(1);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Focus visible */
+*:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Input autofill override */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 40px rgb(var(--surface-light)) inset !important;
+  -webkit-text-fill-color: rgb(var(--foreground)) !important;
+  caret-color: rgb(var(--foreground));
+}
+
+/* Loading bar */
+.loading-bar {
+  position: relative;
+  overflow: hidden;
+  height: 2px;
+  background: var(--border);
+}
+.loading-bar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: #ffffff;
+  animation: loading-bar 1.5s ease-in-out infinite;
+}
+
+@keyframes loading-bar {
+  0% { transform: translateX(-200%); }
+  100% { transform: translateX(400%); }
+}

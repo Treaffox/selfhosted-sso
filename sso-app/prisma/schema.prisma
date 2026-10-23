@@ -1,0 +1,331 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Personal data columns are encrypted at the application level (lib/db-encryption.ts, ENCRYPTED_FIELDS):
+// User.email, UserAvatar.data, Passkey.deviceName, Session/LoginSession/LoginHistory/TrustedDevice/UserIpRule
+// IPs + user agents + device names, AuditLog message/actorName/targetLabel/ipAddress/userAgent/requestPath/details.
+
+// ─── Users ────────────────────────────────────────────
+
+model User {
+  id                  String    @id @default(cuid())
+  username            String    @unique
+  passwordHash        String
+  email               String?
+  isMaster            Boolean   @default(false)
+  forcePasswordChange Boolean   @default(true)
+  totpSecret          String?   // AES-256-GCM encrypted
+  totpVerified        Boolean   @default(false)
+  mobileAppEnabled    Boolean   @default(false)
+  failedAttempts      Int       @default(0)
+  lockedUntil         DateTime?
+  sessionDurationHours Int?     // null = use server default (SESSION_MAX_AGE_HOURS)
+  avatarUpdatedAt     DateTime? // null = no profile picture; also used as cache-busting version
+  locale              String?   // "de" | "en"; null = automatic (browser language / IP country)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  passkeys       Passkey[]
+  permissions    UserAppPermission[]
+  sessions       Session[]
+  ipRules        UserIpRule[]
+  recoveryCodes  RecoveryCode[]
+  loginHistory   LoginHistory[]
+  trustedDevices TrustedDevice[]
+  loginSessions  LoginSession[]
+  emailCodes     EmailCode[]
+  accessTokens   OAuthAccessToken[]
+  avatar         UserAvatar?
+}
+
+// Profile picture bytes live in their own table so regular User queries never load the blob.
+model UserAvatar {
+  userId    String   @id
+  data      Bytes
+  mime      String
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Apps ─────────────────────────────────────────────
+
+model App {
+  id                String   @id @default(cuid())
+  name              String
+  tokenHash         String   @unique
+  tokenPrefix       String   // first 8 chars shown for identification
+  redirectUris      String   // JSON array of allowed redirect URIs
+  permissionLevels  String   @default("[\"ALLOW\",\"DENY\"]") // JSON array
+  defaultPermission String   @default("DENY")
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // OIDC fields
+  clientId          String?  @unique // OIDC client_id (auto-generated if null)
+  clientSecret      String?  // Hashed OIDC client_secret (for confidential clients)
+  clientSecretPrefix String? // First 8 chars for identification
+  clientType        String   @default("confidential") // confidential | public
+  allowedScopes     String   @default("[\"openid\",\"profile\",\"email\"]") // JSON array
+  oidcEnabled       Boolean  @default(true) // lets a master turn OIDC back off without losing clientId/clientSecret
+
+  permissions   UserAppPermission[]
+  authCodes     AuthCode[]
+  accessTokens  OAuthAccessToken[]
+  dnsRecords    AppDnsRecord[]
+}
+
+// DNS records managed via the Cloudflare API on behalf of an app. Only records
+// tracked here can be changed/deleted through the admin UI.
+model AppDnsRecord {
+  id           String   @id @default(cuid())
+  appId        String
+  cfRecordId   String   @unique
+  type         String   // A | AAAA | CNAME | TXT | MX
+  name         String   // fully qualified
+  content      String
+  ttl          Int      @default(1) // 1 = automatic
+  proxied      Boolean  @default(false)
+  priority     Int?     // MX only
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  app App @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@index([appId])
+}
+
+// ─── User ↔ App Permissions ──────────────────────────
+
+model UserAppPermission {
+  id              String @id @default(cuid())
+  userId          String
+  appId           String
+  permissionLevel String @default("DENY")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  app  App  @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, appId])
+}
+
+// ─── Passkeys (WebAuthn) ─────────────────────────────
+
+model Passkey {
+  id           String   @id @default(cuid())
+  userId       String
+  credentialId String   @unique
+  publicKey    String   // Base64-encoded
+  counter      Int      @default(0)
+  transports   String?  // JSON array
+  deviceName   String   @default("Passkey")
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Sessions ─────────────────────────────────────────
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  ipAddress String
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Login Sessions (in-progress multi-step login) ───
+
+model LoginSession {
+  id          String   @id @default(cuid())
+  token       String   @unique
+  userId      String?
+  step        String   @default("USERNAME") // USERNAME | PASSWORD | PASSKEY | MFA | COMPLETE
+  ipAddress   String
+  ipStatus    String   @default("UNKNOWN") // UNKNOWN | WHITELISTED
+  appId       String?
+  redirectUri String?
+  state       String?
+  challenge   String?  // WebAuthn challenge
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  // OIDC fields
+  oidcScopes          String?  // JSON array
+  oidcNonce           String?
+  oidcCodeChallenge   String?
+  oidcCodeChallengeMethod String?
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+// ─── OAuth-like Authorization Codes ──────────────────
+
+model AuthCode {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  appId           String
+  userId          String
+  permissionLevel String
+  redirectUri     String
+  state           String?
+  expiresAt       DateTime
+  used            Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  // OIDC/PKCE fields
+  scopes          String?  // JSON array of requested scopes
+  codeChallenge   String?  // PKCE code_challenge
+  codeChallengeMethod String? // "S256" or "plain"
+  nonce           String?  // OIDC nonce for ID token
+
+  app App @relation(fields: [appId], references: [id], onDelete: Cascade)
+}
+
+// ─── OAuth Access Tokens ─────────────────────────────
+
+model OAuthAccessToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  appId     String
+  userId    String
+  scopes    String   // JSON array of granted scopes
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  app  App  @relation(fields: [appId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── IP Rules ─────────────────────────────────────────
+
+model UserIpRule {
+  id        String   @id @default(cuid())
+  userId    String
+  ipAddress String   // encrypted
+  ipHash    String   @default(dbgenerated("(gen_random_uuid())::text")) // blind index (HMAC) for lookups, see lib/ip.ts
+  type      String   // WHITELIST
+  addedBy   String   @default("USER") // USER | ADMIN
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, ipHash])
+}
+
+// ─── Recovery Codes ──────────────────────────────────
+
+model RecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  used      Boolean   @default(false)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Email Verification Codes ─────────────────────────
+
+model EmailCode {
+  id        String   @id @default(cuid())
+  userId    String
+  code      String
+  type      String   // LOGIN_MFA | PASSWORD_RESET
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Login History / Audit ────────────────────────────
+
+model LoginHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  ipAddress String
+  userAgent String?
+  success   Boolean
+  method    String   // PASSKEY | PASSWORD_TOTP | PASSWORD_EMAIL | PASSWORD_IP_WHITELIST | RECOVERY_CODE
+  reason    String?  // failure reason
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Trusted Devices ─────────────────────────────────
+
+model TrustedDevice {
+  id          String   @id @default(cuid())
+  userId      String
+  deviceToken String   @unique
+  deviceName  String?
+  ipAddress   String
+  userAgent   String?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Audit Log ────────────────────────────────────────
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  action        String   // USER_LOGIN | APP_LOGIN | AVATAR_UPDATED | ... (see lib/audit.ts)
+  category      String   @default("GENERAL") // AUTH | SESSION | PROFILE | SECURITY | APP | OIDC | ADMIN | GENERAL
+  outcome       String   @default("SUCCESS") // SUCCESS | FAILURE | DENIED
+  message       String?  // human-readable German sentence
+  userId        String?  // no FK on purpose: entries must outlive the user
+  actorName     String?  // denormalized username
+  sessionRef    String?  // short non-reversible id of the SSO session in use
+  authVia       String?  // PASSWORD | PASSKEY | EXISTING_SESSION | ...
+  appId         String?
+  appName       String?
+  targetType    String?  // USER | APP | PASSKEY | DNS_RECORD | ...
+  targetId      String?
+  targetLabel   String?
+  ipAddress     String?
+  userAgent     String?
+  requestMethod String?
+  requestPath   String?
+  details       Json?
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([category, createdAt])
+  @@index([userId, createdAt])
+  @@index([appId, createdAt])
+}
+
+// ─── Admin-managed settings ───────────────────────────
+
+// Key/value store for everything an admin configures in the web UI (branding texts, mail providers,
+// Cloudflare). `value` is JSON; secret fields inside are encrypted individually (lib/settings.ts).
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// Uploaded branding images: kind = logo | logoLight | favicon. Not personal data, so not in ENCRYPTED_FIELDS.
+model BrandAsset {
+  kind      String   @id
+  data      Bytes
+  mime      String
+  updatedAt DateTime @updatedAt
+}

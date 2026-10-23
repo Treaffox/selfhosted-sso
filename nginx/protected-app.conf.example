@@ -1,0 +1,69 @@
+# ──────────────────────────────────────────────
+# Eine Anwendung per nginx auth_request hinter den SSO stellen
+# ──────────────────────────────────────────────
+# Der Nutzer meldet sich einmal am SSO an; nginx fragt bei jedem Request /api/auth/verify und reicht die
+# Nutzerdaten als Header an die App weiter. Die App braucht keinen eigenen Login-Code.
+#
+# Voraussetzungen:
+#  - APP_URL in der .env und COOKIE_DOMAIN passen: App und SSO liegen unter derselben Domain
+#    (z. B. sso.example.com und app.example.com mit COOKIE_DOMAIN=.example.com)
+#  - Im SSO unter Admin → Apps eine App angelegt (liefert DEINE_APP_ID) und die Origin der App als
+#    Redirect-URI eingetragen (z. B. "https://app.example.com/")
+#  - nginx/sso-cookie-strip.conf liegt in /etc/nginx/conf.d/
+# ──────────────────────────────────────────────
+
+upstream sso_backend { server 127.0.0.1:8122; }
+upstream app_backend { server 127.0.0.1:8080; }   # deine geschützte Anwendung
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name app.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/app.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/app.example.com/privkey.pem;
+
+    # Interner Endpunkt für die Prüfung
+    location = /_sso_auth {
+        internal;
+        proxy_pass http://sso_backend/api/auth/verify?app_id=DEINE_APP_ID;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header X-Original-Host $host;
+        proxy_set_header X-Original-Method $request_method;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host sso.example.com;
+    }
+
+    location / {
+        auth_request /_sso_auth;
+        auth_request_set $sso_user_id $upstream_http_x_user_id;
+        auth_request_set $sso_username $upstream_http_x_username;
+        auth_request_set $sso_email $upstream_http_x_email;
+        auth_request_set $sso_permission $upstream_http_x_permission;
+
+        proxy_set_header X-User-Id $sso_user_id;
+        proxy_set_header X-Username $sso_username;
+        proxy_set_header X-Email $sso_email;
+        proxy_set_header X-Permission $sso_permission;
+
+        error_page 401 = @sso_login;   # nicht angemeldet → zum SSO
+        error_page 403 /403.html;      # angemeldet, aber keine Berechtigung
+
+        proxy_pass http://app_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # SSO-Cookies nicht an die App weiterreichen
+        proxy_set_header Cookie $cookie_without_sso;
+    }
+
+    location @sso_login {
+        return 302 https://sso.example.com/auth/login?app_id=DEINE_APP_ID&redirect_uri=$scheme://$host$request_uri;
+    }
+}

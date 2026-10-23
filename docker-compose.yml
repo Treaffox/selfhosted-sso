@@ -1,0 +1,71 @@
+services:
+  # ─── PostgreSQL ─────────────────────────────────────────
+  # Nur lokal erreichbar. Die Daten liegen im Volume "sso-pgdata".
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    labels:
+      # Auto-Updater (Watchtower, WUD, ...) dürfen die Postgres-Hauptversion nicht von selbst anheben:
+      # ein Major-Sprung braucht ein Dump/Restore und lässt sonst die Datenbank nicht mehr starten.
+      - com.centurylinklabs.watchtower.enable=false
+      - wud.watch=false
+    volumes:
+      - sso-pgdata:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=sso
+      - POSTGRES_DB=sso
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD fehlt in der .env (./setup.sh erzeugt sie)}
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sso -d sso"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ─── SSO ────────────────────────────────────────────────
+  sso:
+    build:
+      context: ./sso-app
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    labels:
+      # Lokal gebautes Image ohne Registry: Auto-Updater haben hier nichts zu holen.
+      - com.centurylinklabs.watchtower.enable=false
+      - wud.watch=false
+    ports:
+      # Nur lokal; ein Reverse-Proxy (nginx, Caddy, ...) stellt HTTPS davor. Siehe README.
+      - "127.0.0.1:${SSO_PORT:-8122}:8122"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://sso:${DB_PASSWORD}@db:5432/sso
+      - NODE_ENV=production
+      - APP_URL=${APP_URL:?APP_URL fehlt in der .env (öffentliche Adresse, z. B. https://sso.example.com)}
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET fehlt in der .env}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY fehlt in der .env}
+      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:?DATA_ENCRYPTION_KEY fehlt in der .env}
+      - OIDC_PRIVATE_KEY_PEM=${OIDC_PRIVATE_KEY_PEM:-}
+      - MASTER_USERNAME=${MASTER_USERNAME:-admin}
+      - MASTER_PASSWORD=${MASTER_PASSWORD:?MASTER_PASSWORD fehlt in der .env}
+      - COOKIE_DOMAIN=${COOKIE_DOMAIN:-}
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-}
+      - SESSION_MAX_AGE_HOURS=${SESSION_MAX_AGE_HOURS:-24}
+      - TRUSTED_DEVICE_MAX_AGE_DAYS=${TRUSTED_DEVICE_MAX_AGE_DAYS:-30}
+      - RATE_LIMIT_LOGIN_MAX=${RATE_LIMIT_LOGIN_MAX:-20}
+      - RATE_LIMIT_LOGIN_WINDOW_MS=${RATE_LIMIT_LOGIN_WINDOW_MS:-900000}
+      - RATE_LIMIT_EMAIL_MAX=${RATE_LIMIT_EMAIL_MAX:-8}
+      - RATE_LIMIT_EMAIL_WINDOW_MS=${RATE_LIMIT_EMAIL_WINDOW_MS:-600000}
+      - RATE_LIMIT_ATTEMPT_MAX=${RATE_LIMIT_ATTEMPT_MAX:-10}
+      - RATE_LIMIT_ATTEMPT_WINDOW_MS=${RATE_LIMIT_ATTEMPT_WINDOW_MS:-900000}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8122/auth/login"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  sso-pgdata:
+    driver: local

@@ -1,0 +1,12 @@
+# Einfachste HTTPS-Variante: Caddy holt und erneuert die Zertifikate selbst.
+# sso.example.com durch deine Adresse ersetzen (APP_URL in der .env muss dazu passen) und Caddy starten:
+#   caddy run --config Caddyfile.example
+sso.example.com {
+	reverse_proxy 127.0.0.1:8122 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+	}
+	request_body {
+		max_size 4MB
+	}
+}

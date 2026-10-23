@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Test App</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      background: #050505;
+      color: #fafafa;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      max-width: 480px;
+      width: 100%;
+      padding: 1.5rem 1rem;
+      text-align: center;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 1rem;
+    }
+    p {
+      color: #888;
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 2rem;
+    }
+    .btn {
+      display: inline-block;
+      padding: 0.75rem 2rem;
+      background: #fafafa;
+      color: #050505;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.875rem;
+      border-radius: 0.5rem;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .user-info {
+      padding: 1rem;
+      background: rgba(255,255,255,0.05);
+      border-radius: 0.5rem;
+      margin-bottom: 1.5rem;
+      text-align: left;
+    }
+    .user-info span { color: #888; font-size: 0.75rem; font-weight: 600; }
+    .user-info strong { display: block; font-size: 0.875rem; margin-top: 0.25rem; }
+    footer {
+      margin-top: 3rem;
+      font-size: 0.75rem;
+      color: #555;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Test App</h1>
+    <p>Beispielanwendung für die SSO-Integration</p>
+
+    <% if (user) { %>
+      <div class="user-info">
+        <span>Angemeldet als</span>
+        <strong><%= user.username %></strong>
+        <span>Berechtigung</span>
+        <strong><%= user.permission %></strong>
+      </div>
+      <a href="/dashboard" class="btn">Zum Dashboard</a>
+      <form action="/auth/logout" method="POST" style="margin-top: 1rem;">
+        <button type="submit" class="btn" style="background: transparent; color: #888; border: 1px solid #333;">
+          Abmelden
+        </button>
+      </form>
+    <% } else { %>
+      <a href="/dashboard" class="btn">Mit SSO anmelden</a>
+    <% } %>
+  </div>
+</body>
+</html>
