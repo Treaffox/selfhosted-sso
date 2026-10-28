@@ -117,7 +117,7 @@ npx prisma migrate deploy && npx prisma db seed
 npm run dev          # http://localhost:8122
 ```
 
-Stack: Next.js 15 (App Router), TypeScript, Tailwind 3.4, Prisma 6, PostgreSQL 17, `@simplewebauthn`, `otplib`, `jose`, `nodemailer`, `sharp`. Die Architektur-Regeln stehen in [`CLAUDE.md`](CLAUDE.md).
+Stack: Next.js 15 (App Router), TypeScript, Tailwind 3.4, Prisma 6, PostgreSQL 17, `@simplewebauthn`, `otplib`, `jose`, `nodemailer`, `sharp`.
 
 Neue Migration nach einer Schema-Änderung: `npx prisma migrate dev --name <name>`.
 

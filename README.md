@@ -117,7 +117,7 @@ npx prisma migrate deploy && npx prisma db seed
 npm run dev          # http://localhost:8122
 ```
 
-Stack: Next.js 15 (App Router), TypeScript, Tailwind 3.4, Prisma 6, PostgreSQL 17, `@simplewebauthn`, `otplib`, `jose`, `nodemailer`, `sharp`. Architecture rules are in [`CLAUDE.md`](CLAUDE.md).
+Stack: Next.js 15 (App Router), TypeScript, Tailwind 3.4, Prisma 6, PostgreSQL 17, `@simplewebauthn`, `otplib`, `jose`, `nodemailer`, `sharp`.
 
 Translations: the German source text is the key (`t("Anmelden")`), English lives in `sso-app/src/lib/i18n/en`. `npm run i18n:check` lists missing entries (CI runs it).
 

@@ -8,5 +8,4 @@ prisma/dev.db-journal
 .git
 .gitignore
 README.md
-CLAUDE.md
 geoip
