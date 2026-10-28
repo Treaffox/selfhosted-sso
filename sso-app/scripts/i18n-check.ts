@@ -20,7 +20,7 @@ function walk(dir: string): string[] {
 
 const used = new Map<string, string>(); // key → first file
 const dynamic: string[] = [];
-const MESSAGE_FILES = /(validation|site-settings|security-settings|mail\/settings|mail\/index|brand-assets|cloudflare|safe-redirect|reauth|login-flow)\.ts$|app\/api\/|app\/oauth\//;
+const MESSAGE_FILES = /(validation|site-settings|security-settings|mail\/settings|mail\/index|brand-assets|cloudflare|safe-redirect|reauth|login-flow|device-login|guest-access|geoip-update)\.ts$|app\/api\/|app\/oauth\//;
 const ZOD_CALLS = new Set(["min", "max", "email", "regex", "refine", "int", "url", "positive", "length", "superRefine"]);
 
 const literal = (n: ts.Node | undefined): string | null => {
@@ -55,6 +55,8 @@ for (const file of walk(SRC)) {
         else add(key);
       } else if (callee === "te") {
         add(literal(n.arguments[1]));
+      } else if (callee === "fail" && MESSAGE_FILES.test(rel)) {
+        add(literal(n.arguments[1])); // fail(status, "Deutscher Text")
       } else if (MESSAGE_FILES.test(rel) && ts.isPropertyAccessExpression(n.expression) && ZOD_CALLS.has(n.expression.name.text)) {
         for (const a of n.arguments) add(literal(a));
       }

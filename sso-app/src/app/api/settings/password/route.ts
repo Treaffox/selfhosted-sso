@@ -5,6 +5,7 @@ import { hashPassword, logAudit } from "@/lib/auth";
 import { passwordSchema } from "@/lib/validation";
 import { getClientIp } from "@/lib/ip";
 import { requireReauth } from "@/lib/reauth";
+import { revokeGuestGrants } from "@/lib/guest-access";
 
 /** POST: Change password. Ends all other sessions and trusted devices. */
 export async function POST(request: Request) {
@@ -41,6 +42,7 @@ export async function POST(request: Request) {
     // Whoever held the old password (or a stolen session) must not stay logged in
     await destroyOtherSessions(session.user.id, session.id);
     await revokeTrustedDevices(session.user.id);
+    await revokeGuestGrants(session.user.id);
 
     await logAudit("PASSWORD_CHANGED", {}, session.user.id, ip);
 

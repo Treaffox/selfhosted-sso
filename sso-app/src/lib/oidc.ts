@@ -55,12 +55,25 @@ async function resolvePermission(userId: string, app: { id: string; defaultPermi
   return permission?.permissionLevel ?? app.defaultPermission;
 }
 
+/** Guest access an issued token belongs to: the token never outlives it. */
+export interface GuestLimit {
+  id: string;
+  expiresAt: Date;
+}
+
+/** Lifetime in seconds: the regular one, shortened to the remaining time of a guest grant. */
+function ttlFor(regular: number, guest?: GuestLimit): number {
+  if (!guest) return regular;
+  return Math.max(1, Math.min(regular, Math.floor((guest.expiresAt.getTime() - Date.now()) / 1000)));
+}
+
 export async function generateIdToken(
   userId: string,
   clientId: string,
   scopes: string[],
   nonce?: string,
-  permission?: string
+  permission?: string,
+  guest?: GuestLimit
 ): Promise<string> {
   const user = await db.user.findUnique({
     where: { id: userId },
@@ -76,7 +89,7 @@ export async function generateIdToken(
     iss: issuer,
     sub: user.id,
     aud: clientId,
-    exp: now + ID_TOKEN_TTL,
+    exp: now + ttlFor(ID_TOKEN_TTL, guest),
     iat: now,
     auth_time: now,
   };
@@ -84,6 +97,8 @@ export async function generateIdToken(
   if (nonce) claims.nonce = nonce;
   // App-specific level (ALLOW, ADMIN, ...): only meaningful for this client, so no scope needed
   if (permission) claims.permission = permission;
+  // Guest login (see /settings/sessions): limited to this app, ends with exp
+  if (guest) claims.guest = true;
   if (scopes.includes("profile")) {
     claims.preferred_username = user.username;
     const picture = getAvatarUrl(user);
@@ -102,9 +117,11 @@ export async function generateIdToken(
 export async function generateAccessToken(
   userId: string,
   clientId: string,
-  scopes: string[]
+  scopes: string[],
+  guest?: GuestLimit
 ): Promise<{ token: string; expiresIn: number }> {
   const token = generateToken(32);
+  const expiresIn = ttlFor(ACCESS_TOKEN_TTL, guest);
 
   await db.oAuthAccessToken.create({
     data: {
@@ -112,11 +129,12 @@ export async function generateAccessToken(
       appId: await getAppIdByClientId(clientId),
       userId,
       scopes: JSON.stringify(scopes),
-      expiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL * 1000),
+      guestGrantId: guest?.id,
+      expiresAt: new Date(Date.now() + expiresIn * 1000),
     },
   });
 
-  return { token, expiresIn: ACCESS_TOKEN_TTL };
+  return { token, expiresIn };
 }
 
 async function getAppIdByClientId(clientId: string): Promise<string> {
@@ -132,7 +150,11 @@ export async function validateAccessToken(token: string) {
   const tokenHash = sha256(token);
   const accessToken = await db.oAuthAccessToken.findUnique({
     where: { token: tokenHash },
-    include: { user: { select: { id: true, username: true, email: true, avatarUpdatedAt: true } }, app: true },
+    include: {
+      user: { select: { id: true, username: true, email: true, avatarUpdatedAt: true } },
+      app: true,
+      guestGrant: { select: { id: true, expiresAt: true } },
+    },
   });
 
   if (!accessToken || accessToken.expiresAt < new Date()) {
@@ -147,6 +169,11 @@ export async function validateAccessToken(token: string) {
     return null;
   }
 
+  // Guest access ended (ending it deletes the token as well; this covers a grant that merely ran out)
+  if (accessToken.guestGrantId && (!accessToken.guestGrant || accessToken.guestGrant.expiresAt < new Date())) {
+    return null;
+  }
+
   // Access revoked since the token was issued
   const permission = await resolvePermission(accessToken.userId, accessToken.app);
   if (permission === "DENY") {
@@ -158,6 +185,7 @@ export async function validateAccessToken(token: string) {
     app: accessToken.app,
     scopes: JSON.parse(accessToken.scopes) as string[],
     permission,
+    guest: !!accessToken.guestGrant,
   };
 }
 
@@ -188,7 +216,8 @@ export async function createOIDCAuthCode(
   codeChallenge?: string,
   codeChallengeMethod?: string,
   state?: string,
-  nonce?: string
+  nonce?: string,
+  guestGrantId?: string
 ): Promise<string> {
   const code = generateToken(32);
 
@@ -209,6 +238,7 @@ export async function createOIDCAuthCode(
       codeChallenge,
       codeChallengeMethod,
       nonce,
+      guestGrantId,
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     },
   });
@@ -231,10 +261,11 @@ export async function exchangeOIDCCode(
 } | null> {
   const authCode = await db.authCode.findUnique({
     where: { code },
-    include: { app: true },
+    include: { app: true, guestGrant: { select: { id: true, expiresAt: true } } },
   });
 
   if (!authCode || authCode.used || authCode.expiresAt < new Date()) return null;
+  if (authCode.guestGrantId && (!authCode.guestGrant || authCode.guestGrant.expiresAt < new Date())) return null;
 
   const app = authCode.app;
   if (!app.isActive || !app.oidcEnabled) return null;
@@ -267,10 +298,11 @@ export async function exchangeOIDCCode(
   if (redeemed.count !== 1) return null;
 
   const scopes = authCode.scopes ? JSON.parse(authCode.scopes) as string[] : ["openid"];
-  const { token: accessToken, expiresIn } = await generateAccessToken(authCode.userId, clientId, scopes);
-  const idToken = await generateIdToken(authCode.userId, clientId, scopes, authCode.nonce ?? undefined, permission);
+  const guest = authCode.guestGrant ?? undefined;
+  const { token: accessToken, expiresIn } = await generateAccessToken(authCode.userId, clientId, scopes, guest);
+  const idToken = await generateIdToken(authCode.userId, clientId, scopes, authCode.nonce ?? undefined, permission, guest);
 
-  await logAudit("OIDC_TOKEN_ISSUED", { scopes, permission }, authCode.userId, undefined, { appId: app.id, appName: app.name, authVia: "OIDC_CODE", useSession: false });
+  await logAudit("OIDC_TOKEN_ISSUED", { scopes, permission, ...(guest ? { guest: true } : {}) }, authCode.userId, undefined, { appId: app.id, appName: app.name, authVia: "OIDC_CODE", useSession: false });
 
   return {
     access_token: accessToken,
@@ -297,7 +329,7 @@ export function getOIDCConfiguration() {
     subject_types_supported: ["public"],
     id_token_signing_alg_values_supported: ["RS256"],
     token_endpoint_auth_methods_supported: ["client_secret_post", "client_secret_basic", "none"],
-    claims_supported: ["sub", "iss", "aud", "exp", "iat", "auth_time", "nonce", "preferred_username", "picture", "email", "email_verified", "permission"],
+    claims_supported: ["sub", "iss", "aud", "exp", "iat", "auth_time", "nonce", "preferred_username", "picture", "email", "email_verified", "permission", "guest"],
     code_challenge_methods_supported: ["S256"],
   };
 }

@@ -35,8 +35,10 @@ export async function GET(
     return NextResponse.json({ error: "App nicht gefunden" }, { status: 404 });
   }
 
+  // The credential hashes never leave the server (the UI only needs the prefixes)
+  const { tokenHash: _tokenHash, clientSecret: _clientSecret, ...safe } = app;
   return NextResponse.json({
-    ...app,
+    ...safe,
     permissionLevels: JSON.parse(app.permissionLevels),
     redirectUris: JSON.parse(app.redirectUris),
     allowedScopes: app.allowedScopes ? JSON.parse(app.allowedScopes) : ["openid", "profile", "email"],

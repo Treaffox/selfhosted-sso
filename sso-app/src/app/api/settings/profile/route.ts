@@ -32,6 +32,8 @@ export async function GET() {
       mobileAppEnabled: true,
       sessionDurationHours: true,
       locale: true,
+      guestLoginEnabled: true,
+      deviceLoginEnabled: true,
       avatarUpdatedAt: true,
       createdAt: true,
       _count: { select: { passkeys: true, recoveryCodes: true, trustedDevices: true } },

@@ -8,7 +8,7 @@ import { PageTitle } from "@/components/ui/page-title";
 import { useI18n } from "@/components/i18n-provider";
 
 interface Status {
-  checklist: { server: boolean; branding: boolean; mail: boolean; cloudflare: boolean };
+  checklist: { server: boolean; branding: boolean; mail: boolean; cloudflare: boolean; geoip: boolean };
   server: { appUrl: string; https: boolean; rpId: string; cookieDomain: string | null; oidcIssuer: string };
 }
 
@@ -29,6 +29,7 @@ export default function SystemOverviewPage() {
     { done: checklist.server, title: t("Öffentliche Adresse (HTTPS)"), text: t("APP_URL in der .env zeigt auf eine öffentliche https://-Adresse. Nur dann funktionieren Passkeys und sichere Cookies."), href: null, action: "" },
     { done: checklist.branding, title: t("Name, Logo und Favicon"), text: t("Wie der Dienst heißt und aussieht – auf der Anmeldeseite, im Header und in E-Mails."), href: "/admin/settings/appearance", action: t("Erscheinungsbild einrichten") },
     { done: checklist.mail, title: t("E-Mail-Versand"), text: t("Ohne Versand kommen keine Bestätigungscodes, Willkommens- und Anmeldemails an."), href: "/admin/settings/mail", action: t("E-Mail einrichten") },
+    { done: checklist.geoip, title: t("Standort zu IP-Adressen (GeoIP)"), text: t("MaxMind-Konto eintragen, damit bei Freigaben für andere Geräte und Gäste ein ungefährer Standort neben der IP-Adresse steht."), href: "/admin/settings/geoip", action: t("MaxMind einrichten") },
     { done: checklist.cloudflare, title: t("Cloudflare (optional)"), text: t("Nur nötig, wenn du DNS-Einträge für Apps direkt hier verwalten willst."), href: "/admin/settings/cloudflare", action: t("Cloudflare verbinden"), optional: true },
   ];
 

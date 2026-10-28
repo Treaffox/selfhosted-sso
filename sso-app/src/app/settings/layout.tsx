@@ -3,6 +3,7 @@ import { getSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { DeviceRequestPrompt } from "@/components/device/device-request-prompt";
 import { getBrandView } from "@/lib/site-settings";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export default async function SettingsLayout({
         {children}
       </main>
       <Footer brand={brand} />
+      <DeviceRequestPrompt />
     </div>
   );
 }

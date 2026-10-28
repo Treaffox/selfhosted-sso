@@ -115,82 +115,85 @@ export default function MailSettingsPage() {
   };
 
   return (
-    <form onSubmit={save} className="space-y-6">
+    <div className="space-y-6">
       <PageTitle title={t("E-Mail")} />
+      {/* Outside the form: a form inside a form (the dialog's own) is not submitted properly by browsers */}
       {passwordPrompt}
 
-      {!configured && (
-        <div className="border border-warning/30 bg-warning/10 text-warning rounded-lg px-4 py-3 text-sm font-semibold">
-          {t("Es ist noch kein E-Mail-Versand eingerichtet. Bestätigungscodes, Passwort-Zurücksetzen und Willkommensmails werden nicht zugestellt.")}
-        </div>
-      )}
-
-      <Card>
-        <CardTitle>{t("Absender")}</CardTitle>
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label={t("Absender-Adresse")} type="email" value={form.fromAddress} onChange={(e) => set("fromAddress", e.target.value)} placeholder={t("sso@example.com")} required />
-          <Input label={t("Absender-Name")} value={form.fromName} onChange={(e) => set("fromName", e.target.value)} placeholder={defaultFromName} maxLength={80} />
-          <Input label={t("Antwort-Adresse (optional)")} type="email" value={form.replyTo} onChange={(e) => set("replyTo", e.target.value)} placeholder={t("support@example.com")} />
-        </div>
-        <p className="text-xs text-muted mt-3">
-          {t("Die Absender-Adresse muss beim Anbieter freigegeben sein (verifizierte Adresse oder Domain), sonst lehnt er die Mails ab. Ohne Absender-Namen steht der Name des Dienstes im Postfach.")}
-        </p>
-      </Card>
-
-      <Card>
-        <CardTitle>{t("Haupt-Anbieter")}</CardTitle>
-        <p className="text-sm text-muted mt-1 mb-4">{t("Darüber gehen alle Mails raus.")}</p>
-        <ProviderForm providers={providers} groups={groups} value={form.primary} onChange={(v) => set("primary", v)} required />
-      </Card>
-
-      <Card>
-        <CardTitle>{t("Ersatz-Anbieter (optional)")}</CardTitle>
-        <p className="text-sm text-muted mt-1 mb-4">{t("Springt ein, wenn der Haupt-Anbieter nicht antwortet oder die Mail ablehnt. Am besten ein anderer Dienst als oben.")}</p>
-        {form.fallback ? (
-          <>
-            <ProviderForm providers={providers} groups={groups} value={form.fallback} onChange={(v) => set("fallback", v)} />
-            <Button type="button" variant="ghost" size="sm" className="mt-3" onClick={() => set("fallback", null)}>
-              {t("Ersatz-Anbieter entfernen")}
-            </Button>
-          </>
-        ) : (
-          <Button type="button" variant="secondary" size="sm" disabled={!form.primary} onClick={() => set("fallback", emptyChannel(providers[0]))}>
-            {t("Ersatz-Anbieter hinzufügen")}
-          </Button>
-        )}
-      </Card>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" loading={saving} disabled={!dirty}>
-          {t("Speichern")}
-        </Button>
-        {dirty && <span className="text-xs text-muted">{t("Ungespeicherte Änderungen. Zum Testen zuerst speichern.")}</span>}
-      </div>
-
-      <Card>
-        <CardTitle>{t("Testmail senden")}</CardTitle>
-        <p className="text-sm text-muted mt-1 mb-4">{t("Schickt eine Testmail mit deinem Logo über einen gespeicherten Anbieter und zeigt die echte Fehlermeldung des Anbieters, falls es nicht klappt.")}</p>
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
-          <Input label={t("Empfänger")} type="email" value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder={t("du@example.com")} />
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" loading={testing === "primary"} disabled={dirty || !testTo || !saved || !JSON.parse(saved).primary} onClick={() => test("primary")}>
-              {t("Haupt-Anbieter testen")}
-            </Button>
-            {saved && JSON.parse(saved).fallback && (
-              <Button type="button" variant="secondary" loading={testing === "fallback"} disabled={dirty || !testTo} onClick={() => test("fallback")}>
-                {t("Ersatz testen")}
-              </Button>
-            )}
+      <form onSubmit={save} className="space-y-6">
+        {!configured && (
+          <div className="border border-warning/30 bg-warning/10 text-warning rounded-lg px-4 py-3 text-sm font-semibold">
+            {t("Es ist noch kein E-Mail-Versand eingerichtet. Bestätigungscodes, Passwort-Zurücksetzen und Willkommensmails werden nicht zugestellt.")}
           </div>
-        </div>
-        {testResult && (
-          <p className={`mt-3 text-sm font-semibold break-words ${testResult.ok ? "text-success" : "text-danger"}`}>
-            {testResult.ok ? "✓ " : "✗ "}
-            {testResult.message}
-          </p>
         )}
-      </Card>
-    </form>
+
+        <Card>
+          <CardTitle>{t("Absender")}</CardTitle>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input label={t("Absender-Adresse")} type="email" value={form.fromAddress} onChange={(e) => set("fromAddress", e.target.value)} placeholder={t("sso@example.com")} required />
+            <Input label={t("Absender-Name")} value={form.fromName} onChange={(e) => set("fromName", e.target.value)} placeholder={defaultFromName} maxLength={80} />
+            <Input label={t("Antwort-Adresse (optional)")} type="email" value={form.replyTo} onChange={(e) => set("replyTo", e.target.value)} placeholder={t("support@example.com")} />
+          </div>
+          <p className="text-xs text-muted mt-3">
+            {t("Die Absender-Adresse muss beim Anbieter freigegeben sein (verifizierte Adresse oder Domain), sonst lehnt er die Mails ab. Ohne Absender-Namen steht der Name des Dienstes im Postfach.")}
+          </p>
+        </Card>
+
+        <Card>
+          <CardTitle>{t("Haupt-Anbieter")}</CardTitle>
+          <p className="text-sm text-muted mt-1 mb-4">{t("Darüber gehen alle Mails raus.")}</p>
+          <ProviderForm providers={providers} groups={groups} value={form.primary} onChange={(v) => set("primary", v)} required />
+        </Card>
+
+        <Card>
+          <CardTitle>{t("Ersatz-Anbieter (optional)")}</CardTitle>
+          <p className="text-sm text-muted mt-1 mb-4">{t("Springt ein, wenn der Haupt-Anbieter nicht antwortet oder die Mail ablehnt. Am besten ein anderer Dienst als oben.")}</p>
+          {form.fallback ? (
+            <>
+              <ProviderForm providers={providers} groups={groups} value={form.fallback} onChange={(v) => set("fallback", v)} />
+              <Button type="button" variant="ghost" size="sm" className="mt-3" onClick={() => set("fallback", null)}>
+                {t("Ersatz-Anbieter entfernen")}
+              </Button>
+            </>
+          ) : (
+            <Button type="button" variant="secondary" size="sm" disabled={!form.primary} onClick={() => set("fallback", emptyChannel(providers[0]))}>
+              {t("Ersatz-Anbieter hinzufügen")}
+            </Button>
+          )}
+        </Card>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" loading={saving} disabled={!dirty}>
+            {t("Speichern")}
+          </Button>
+          {dirty && <span className="text-xs text-muted">{t("Ungespeicherte Änderungen. Zum Testen zuerst speichern.")}</span>}
+        </div>
+
+        <Card>
+          <CardTitle>{t("Testmail senden")}</CardTitle>
+          <p className="text-sm text-muted mt-1 mb-4">{t("Schickt eine Testmail mit deinem Logo über einen gespeicherten Anbieter und zeigt die echte Fehlermeldung des Anbieters, falls es nicht klappt.")}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
+            <Input label={t("Empfänger")} type="email" value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder={t("du@example.com")} />
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" loading={testing === "primary"} disabled={dirty || !testTo || !saved || !JSON.parse(saved).primary} onClick={() => test("primary")}>
+                {t("Haupt-Anbieter testen")}
+              </Button>
+              {saved && JSON.parse(saved).fallback && (
+                <Button type="button" variant="secondary" loading={testing === "fallback"} disabled={dirty || !testTo} onClick={() => test("fallback")}>
+                  {t("Ersatz testen")}
+                </Button>
+              )}
+            </div>
+          </div>
+          {testResult && (
+            <p className={`mt-3 text-sm font-semibold break-words ${testResult.ok ? "text-success" : "text-danger"}`}>
+              {testResult.ok ? "✓ " : "✗ "}
+              {testResult.message}
+            </p>
+          )}
+        </Card>
+      </form>
+    </div>
   );
 }
 

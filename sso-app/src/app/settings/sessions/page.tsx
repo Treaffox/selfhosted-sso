@@ -17,6 +17,15 @@ interface SessionInfo {
   isCurrent: boolean;
 }
 
+interface GuestGrantInfo {
+  id: string;
+  ipAddress: string;
+  userAgent: string | null;
+  createdAt: string;
+  expiresAt: string;
+  app: { id: string; name: string };
+}
+
 interface TrustedDeviceInfo {
   id: string;
   deviceName: string | null;
@@ -31,6 +40,7 @@ export default function SessionsPage() {
   const { t, locale } = useI18n();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [trustedDevices, setTrustedDevices] = useState<TrustedDeviceInfo[]>([]);
+  const [guestGrants, setGuestGrants] = useState<GuestGrantInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState<string | null>(null);
 
@@ -40,6 +50,7 @@ export default function SessionsPage() {
       const data = await res.json();
       setSessions(data.sessions ?? []);
       setTrustedDevices(data.trustedDevices ?? []);
+      setGuestGrants(data.guestGrants ?? []);
     }
     setLoading(false);
   };
@@ -87,14 +98,27 @@ export default function SessionsPage() {
     setRevoking(null);
   };
 
+  const revokeGuest = async (id: string) => {
+    setRevoking(`guest:${id}`);
+    const res = await fetch("/api/settings/sessions", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guestGrantId: id }),
+    });
+    if (res.ok) {
+      setGuestGrants((prev) => (id === "all" ? [] : prev.filter((g) => g.id !== id)));
+    }
+    setRevoking(null);
+  };
+
   const parseBrowser = (ua: string | null): string => {
-    if (!ua) return "Unbekannt";
+    if (!ua) return t("Unbekannt");
     if (ua.includes("Firefox")) return "Firefox";
     if (ua.includes("Edg")) return "Edge";
     if (ua.includes("Chrome")) return "Chrome";
     if (ua.includes("Safari")) return "Safari";
     if (ua.includes("curl")) return "curl";
-    return "Unbekannt";
+    return t("Unbekannt");
   };
 
   const parseOS = (ua: string | null): string => {
@@ -226,6 +250,51 @@ export default function SessionsPage() {
           </div>
         )}
       </Card>
+
+      {guestGrants.length > 0 && (
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>{t("Gast-Zugänge")}</CardTitle>
+              <CardDescription>
+                {t("Diese Geräte haben nur Zugriff auf die genannte App, nicht auf dein Konto.")}
+              </CardDescription>
+            </div>
+            {guestGrants.length > 1 && (
+              <Button variant="danger" size="sm" onClick={() => revokeGuest("all")} loading={revoking === "guest:all"}>
+                {t("Alle beenden")}
+              </Button>
+            )}
+          </div>
+          <div className="mt-4 space-y-2">
+            {guestGrants.map((grant) => (
+              <div key={grant.id} className="flex items-start justify-between gap-4 p-3 bg-foreground/5 rounded-lg">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold mb-1">
+                    {grant.app.name}
+                    <span className="font-semibold text-muted">
+                      {" · "}
+                      {parseBrowser(grant.userAgent)}
+                      {parseOS(grant.userAgent) && t(" auf {os}", { os: parseOS(grant.userAgent) })}
+                    </span>
+                  </p>
+                  <p className="text-xs text-muted">
+                    {t("IP: {ipAddress} · bis {date}", { ipAddress: grant.ipAddress, date: new Date(grant.expiresAt).toLocaleString(dateLocale(locale)) })}
+                  </p>
+                </div>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => revokeGuest(grant.id)}
+                  loading={revoking === `guest:${grant.id}`}
+                >
+                  {t("Beenden")}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card>
         <CardTitle>{t("Sicherheitshinweis")}</CardTitle>

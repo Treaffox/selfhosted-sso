@@ -1,6 +1,6 @@
 "use client";
 
-import { InputHTMLAttributes, forwardRef, useState } from "react";
+import { InputHTMLAttributes, forwardRef, useId, useState } from "react";
 import { useT } from "@/components/i18n-provider";
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -9,21 +9,24 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, className = "", type, ...props }, ref) => {
+  ({ label, error, className = "", type, id, ...props }, ref) => {
     const t = useT();
+    const autoId = useId();
+    const inputId = id ?? autoId;
     const isPassword = type === "password";
     const [showPassword, setShowPassword] = useState(false);
 
     return (
       <div className="w-full">
         {label && (
-          <label className="block text-xs text-muted mb-1.5 uppercase tracking-wider">
+          <label htmlFor={inputId} className="block text-xs text-muted mb-1.5 uppercase tracking-wider">
             {label}
           </label>
         )}
         <div className="relative">
           <input
             ref={ref}
+            id={inputId}
             type={isPassword && showPassword ? "text" : type}
             className={`w-full bg-surface-light border text-foreground placeholder:text-muted/50 px-4 py-3 rounded-lg text-sm font-semibold transition-colors focus:outline-none focus:border-foreground ${
               isPassword ? "pr-11" : ""

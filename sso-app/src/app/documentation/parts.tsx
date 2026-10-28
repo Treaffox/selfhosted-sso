@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { TriangleAlertIcon } from "@/components/ui/icons";
 
 export function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
@@ -8,6 +9,20 @@ export function Section({ id, title, children }: { id: string; title: string; ch
         {children}
       </div>
     </section>
+  );
+}
+
+export function Notice({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 p-4">
+      <span className="mt-0.5 shrink-0 text-warning">
+        <TriangleAlertIcon size={18} />
+      </span>
+      <div>
+        <p className="text-sm font-extrabold text-foreground mb-1">{title}</p>
+        <p className="text-sm leading-relaxed text-muted">{children}</p>
+      </div>
+    </div>
   );
 }
 

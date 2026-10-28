@@ -21,6 +21,8 @@ export const ENCRYPTED_FIELDS: Record<string, string[]> = {
   LoginSession: ["ipAddress"],
   LoginHistory: ["ipAddress", "userAgent"],
   TrustedDevice: ["deviceName", "ipAddress", "userAgent"],
+  DeviceLoginRequest: ["ipAddress", "userAgent"],
+  GuestGrant: ["ipAddress", "userAgent"],
   UserIpRule: ["ipAddress"],
   AuditLog: ["message", "actorName", "targetLabel", "ipAddress", "userAgent", "requestPath", "details"],
 };

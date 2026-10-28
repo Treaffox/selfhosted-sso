@@ -104,6 +104,14 @@ export async function deleteAsset(kind: AssetKind): Promise<void> {
   mailLogoCache.clear();
 }
 
+/** File sizes in bytes (admin page only – never selects the image data itself). */
+export async function getAssetSizes(): Promise<Partial<Record<AssetKind, number>>> {
+  const rows = await db.$queryRaw<{ kind: string; bytes: number }[]>`SELECT kind, octet_length(data)::int AS bytes FROM "BrandAsset"`;
+  const out: Partial<Record<AssetKind, number>> = {};
+  for (const r of rows) if ((ASSET_KINDS as string[]).includes(r.kind)) out[r.kind as AssetKind] = r.bytes;
+  return out;
+}
+
 export async function getAsset(kind: AssetKind): Promise<{ data: Buffer; mime: string; updatedAt: number } | null> {
   const row = await db.brandAsset.findUnique({ where: { kind } });
   return row ? { data: Buffer.from(row.data), mime: row.mime, updatedAt: row.updatedAt.getTime() } : null;

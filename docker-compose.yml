@@ -39,6 +39,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # GeoLite2 database (Admin → System → GeoIP downloads it here), so a rebuilt container keeps it
+      - sso-geoip:/app/geoip
     environment:
       - DATABASE_URL=postgresql://sso:${DB_PASSWORD}@db:5432/sso
       - NODE_ENV=production
@@ -68,4 +71,6 @@ services:
 
 volumes:
   sso-pgdata:
+    driver: local
+  sso-geoip:
     driver: local

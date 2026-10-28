@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { clientIpFromHeaders } from "./client-ip";
 import { tokenLookupKeys } from "./token-store";
-import { N_, makeT } from "./i18n/core";
+import { N_, dateLocale, makeT, type Locale } from "./i18n/core";
 import { sessionCookieName } from "./config";
 
 // ─── Types ────────────────────────────────────────────
@@ -36,6 +36,7 @@ interface Ctx {
   app: string;
   d: Record<string, unknown>;
   t: (key: string, params?: Record<string, string | number>) => string;
+  locale: Locale;
 }
 
 interface EventDef {
@@ -60,6 +61,7 @@ const METHOD_LABELS: Record<string, string> = {
   PASSKEY: N_("Passkey"),
   RECOVERY_CODE: N_("Wiederherstellungscode"),
   TRUSTED_DEVICE: N_("vertrautes Gerät"),
+  DEVICE_APPROVED: N_("Freigabe auf einem anderen Gerät"),
 };
 
 const REASON_LABELS: Record<string, string> = {
@@ -73,6 +75,12 @@ const REASON_LABELS: Record<string, string> = {
   too_many_attempts: N_("zu viele Versuche"),
 };
 
+const untilLabel = (v: unknown, locale: Locale) => {
+  const date = new Date(str(v));
+  return Number.isNaN(date.getTime())
+    ? str(v)
+    : date.toLocaleString(dateLocale(locale), { timeZone: "Europe/Berlin", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+};
 const str = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
 const label = (map: Record<string, string>, v: unknown, t: T) => (map[str(v)] ? t(map[str(v)]) : str(v));
 
@@ -94,11 +102,51 @@ const EVENTS: Record<string, EventDef> = {
     target: (d) => ({ type: "SESSION", id: str(d.sessionId) || undefined }),
   },
 
+  // Sign-in approved on another device / guest access
+  DEVICE_LOGIN_REQUESTED: {
+    category: "AUTH",
+    text: ({ actor, app, d, t }) =>
+      d.kind === "GUEST"
+        ? t("Für das Konto von {actor} wurde ein Gast-Zugang für {app} angefragt", { actor, app })
+        : t("Für das Konto von {actor} wurde eine Anmeldung über ein anderes Gerät angefragt", { actor }),
+  },
+  DEVICE_LOGIN_APPROVED: {
+    category: "AUTH",
+    text: ({ actor, app, d, t }) => {
+      const how = d.via === "CODE" ? t("per Code") : t("per QR-Code");
+      return d.kind === "GUEST"
+        ? t("{actor} hat einen Gast-Zugang für {app} freigegeben ({how}, {hours} Std.)", { actor, app, how, hours: str(d.durationHours) })
+        : t("{actor} hat die Anmeldung auf einem anderen Gerät freigegeben ({how})", { actor, how });
+    },
+  },
+  DEVICE_LOGIN_DENIED: {
+    category: "AUTH",
+    text: ({ actor, d, t }) =>
+      d.reason === "too_many_attempts"
+        ? t("Freigabe für {actor} nach zu vielen falschen Codes beendet", { actor })
+        : t("{actor} hat eine Anfrage für ein anderes Gerät abgelehnt", { actor }),
+  },
+  DEVICE_LOGIN_EXPIRED: {
+    category: "AUTH",
+    text: ({ actor, t }) => t("Die Anfrage für ein anderes Gerät von {actor} ist abgelaufen", { actor }),
+  },
+  GUEST_LOGIN: {
+    category: "APP",
+    text: ({ actor, app, d, t, locale }) => t("Ein Gast hat sich über das Konto von {actor} bei {app} angemeldet (bis {until})", { actor, app, until: untilLabel(d.until, locale) }),
+  },
+  GUEST_ACCESS_REVOKED: {
+    category: "SESSION",
+    text: ({ actor, app, d, t }) => (d.all ? t("{actor} hat alle Gast-Zugänge beendet", { actor }) : t("{actor} hat einen Gast-Zugang für {app} beendet", { actor, app })),
+  },
+
   // Apps (token exchange flow + OIDC)
   APP_LOGIN: {
     category: "APP",
     text: ({ actor, app, d, t }) => {
-      const via = d.via === "EXISTING_SESSION" ? t("mit bereits bestehender SSO-Session") : t("per {method}", { method: label(METHOD_LABELS, d.method, t) });
+      const via =
+        d.via === "EXISTING_SESSION" ? t("mit bereits bestehender SSO-Session")
+        : d.via === "GUEST" ? t("als Gast")
+        : t("per {method}", { method: label(METHOD_LABELS, d.method, t) });
       const proto = d.protocol === "oidc" ? "OIDC" : t("App-Token-Flow");
       const text = t("{actor} meldet sich bei {app} an ({proto}, {via})", { actor, app, proto, via });
       return d.redirect ? `${text} ${t("(Rücksprung {url})", { url: str(d.redirect) })}` : text;
@@ -140,6 +188,15 @@ const EVENTS: Record<string, EventDef> = {
   AVATAR_UPDATED: { category: "PROFILE", text: ({ actor, t }) => t("{actor} hat das Profilbild aktualisiert", { actor }) },
   AVATAR_DELETED: { category: "PROFILE", text: ({ actor, t }) => t("{actor} hat das Profilbild entfernt", { actor }) },
   PASSWORD_CHANGED: { category: "SECURITY", text: ({ actor, t }) => t("{actor} hat das Passwort geändert", { actor }) },
+  DEVICE_LOGIN_SETTINGS_UPDATED: {
+    category: "PROFILE",
+    text: ({ actor, d, t }) => {
+      const parts: string[] = [];
+      if (typeof d.guestLoginEnabled === "boolean") parts.push(d.guestLoginEnabled ? t("Gast-Anmeldung erlaubt") : t("Gast-Anmeldung ausgeschaltet"));
+      if (typeof d.deviceLoginEnabled === "boolean") parts.push(d.deviceLoginEnabled ? t("Anmeldung über anderes Gerät erlaubt") : t("Anmeldung über anderes Gerät ausgeschaltet"));
+      return `${actor}: ${parts.join(", ") || t("Einstellungen geändert")}`;
+    },
+  },
   SESSION_DURATION_UPDATED: {
     category: "PROFILE",
     text: ({ actor, d, t }) => t("{actor} hat die Sitzungsdauer auf {hours} Stunden gesetzt", { actor, hours: str(d.sessionDurationHours) || t("Standard") }),
@@ -239,6 +296,10 @@ const EVENTS: Record<string, EventDef> = {
     category: "ADMIN",
     text: ({ actor, d, t }) => (d.requireMfa ? t("{actor} hat MFA auf verpflichtend gestellt", { actor }) : t("{actor} hat MFA auf optional gestellt", { actor })),
   },
+  SETTINGS_GEOIP_UPDATED: {
+    category: "ADMIN",
+    text: ({ actor, d, t }) => (d.removed ? t("{actor} hat die MaxMind-Anbindung (GeoIP) entfernt", { actor }) : t("{actor} hat die MaxMind-Anbindung (GeoIP) geändert", { actor })),
+  },
   SETTINGS_CLOUDFLARE_UPDATED: {
     category: "ADMIN",
     text: ({ actor, d, t }) => (d.removed ? t("{actor} hat die Cloudflare-Anbindung entfernt", { actor }) : t("{actor} hat die Cloudflare-Anbindung geändert", { actor })),
@@ -330,7 +391,7 @@ export async function logAudit(
     const t = def?.target?.(d);
     const message =
       extra.message ??
-      (def ? def.text({ actor: actorName ?? "Unbekannt", app: appName ?? (appId ? `App ${appId}` : "einer App"), d, t: makeT("de", {}).t }) : `${actorName ?? "Unbekannt"}: ${action}`);
+      (def ? def.text({ actor: actorName ?? "Unbekannt", app: appName ?? (appId ? `App ${appId}` : "einer App"), d, t: makeT("de", {}).t, locale: "de" }) : `${actorName ?? "Unbekannt"}: ${action}`);
 
     await db.auditLog.create({
       data: {
@@ -365,7 +426,8 @@ export async function logAudit(
  */
 export function renderAuditMessage(
   row: { action: string; actorName: string | null; appName: string | null; appId: string | null; details: unknown; message: string | null },
-  t: (key: string, params?: Record<string, string | number>) => string
+  t: (key: string, params?: Record<string, string | number>) => string,
+  locale: Locale
 ): string | null {
   const def = EVENTS[row.action];
   if (!def) return row.message;
@@ -375,5 +437,6 @@ export function renderAuditMessage(
     app: row.appName ?? (row.appId ? t("App {appId}", { appId: row.appId }) : t("einer App")),
     d,
     t,
+    locale,
   });
 }

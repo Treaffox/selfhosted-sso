@@ -7,6 +7,7 @@ Selbst gehosteter Single-Sign-On-Server mit Passkeys, MFA und OpenID Connect. Er
 ## Was drin ist
 
 - **Anmeldung:** Benutzername → Passkey **oder** Passwort → MFA (Authenticator-App, E-Mail-Code, Wiederherstellungscodes). MFA ist standardmäßig verpflichtend und lässt sich im Admin-Bereich auf „optional“ stellen.
+- **Anmeldung auf einem anderen Gerät und als Gast:** Statt ein Passwort einzutippen, zeigt ein Gerät einen QR-Code und einen 6-stelligen Code, und der Besitzer gibt auf einem bereits angemeldeten Gerät frei. Ein Gast bekommt zeitlich begrenzten Zugriff (1, 8 oder 24 Stunden) auf genau eine App, ohne Sitzung im SSO. Beides ist standardmäßig an; jeder Nutzer kann es in den Einstellungen ausschalten. Mit einem MaxMind-Konto (**System → GeoIP**) zeigt die Freigabe zusätzlich einen ungefähren Standort.
 - **Für deine Apps:** OpenID Connect (Authorization Code + PKCE, Discovery, JWKS, Userinfo), ein einfacher App-Token-Flow und nginx-`auth_request` für Apps ohne eigenen Login-Code.
 - **Verwaltung im Browser:** Nutzer, Apps und Berechtigungen, Audit-Log mit Filtern, Sitzungen und vertraute Geräte.
 - **Anpassbar im Browser (Admin → System):** Name, Untertitel, Logo (hell/dunkel), Favicon, Footer-Links, E-Mail-Design, E-Mail-Anbieter mit Ersatz-Anbieter, optional Cloudflare für DNS-Einträge.
@@ -45,6 +46,7 @@ Trage dieselbe Adresse als `APP_URL` in der `.env` ein. Wichtig: Der Proxy muss 
 | Logo, Logo für hellen Hintergrund, Favicon | Browser → **System → Erscheinungsbild** |
 | E-Mail-Farben und -Logo | Browser → **System → Erscheinungsbild** |
 | E-Mail-Anbieter, Absender, Ersatz-Anbieter, Testmail | Browser → **System → E-Mail** |
+| MaxMind-Konto für Standorte zu IP-Adressen (GeoIP) | Browser → **System → GeoIP** |
 | Cloudflare-Token und Zonen-ID (optional) | Browser → **System → Cloudflare** |
 | Nutzer, Apps, Berechtigungen, Redirect-URIs | Browser → **Nutzer** / **Apps** |
 | MFA verpflichtend oder optional | Browser → **System → Sicherheit** |
@@ -62,6 +64,8 @@ Ohne Mailversand kommen keine Bestätigungscodes und Willkommensmails an. Zur Au
 - **Per API:** Brevo, Resend, SendGrid, Mailgun, Postmark, Mailtrap (Email Sending)
 
 Jeder Anbieter zeigt seine Felder mit Hilfetext und einem Link zur Stelle, an der du die Zugangsdaten anlegst. Zusätzlich kannst du einen **Ersatz-Anbieter** hinterlegen, der einspringt, wenn der Haupt-Anbieter ausfällt. Mit **Testmail senden** prüfst du jeden Anbieter einzeln und siehst die echte Fehlermeldung. Zugangsdaten werden verschlüsselt gespeichert und nie wieder angezeigt; Speichern verlangt dein Passwort.
+
+Empfohlene Größen (stehen auch neben den Upload-Feldern, rechts daneben zeigt eine Live-Vorschau Tab, Kopfzeile und Anmeldeseite im hellen und dunklen Design): Logo etwa 480 × 120 px (4 : 1, mindestens 64 px hoch, wird 24 px hoch im Header, 32 px hoch auf der Anmeldeseite und 140 px breit in E-Mails gezeigt), Favicon 256 × 256 px quadratisch (mindestens 64 × 64 px, angezeigt mit 16 bis 32 px). Unpassende Bilder (zu klein, fast quadratisch, JPEG ohne Transparenz) markiert die Seite mit einem Hinweis.
 
 Logo-Uploads: PNG, SVG, WebP, JPEG; beim Favicon werden JPG, WebP, GIF und PNG in ein quadratisches PNG umgewandelt, SVG und ICO bleiben unverändert. Das Logo in E-Mails wird als PNG von `APP_URL` geladen (SVG-Uploads werden dafür automatisch umgewandelt). Die Adresse muss deshalb aus dem Internet erreichbar sein, sonst zeigen Mailprogramme das Bild nicht.
 
@@ -121,7 +125,7 @@ Neue Migration nach einer Schema-Änderung: `npx prisma migrate dev --name <name
 
 Schwachstellen bitte nicht öffentlich als Issue melden, sondern über GitHub → Security → „Report a vulnerability“.
 
-Die Länderbestimmung für die Sprachwahl läuft über eine lokale Datenbank (`@ip-location-db`, CC0, aus den Daten der regionalen Internetregistries); es wird keine IP an Dritte gesendet.
+Die Länderbestimmung für die Sprachwahl läuft über eine lokale Datenbank (`@ip-location-db`, CC0, aus den Daten der regionalen Internetregistries); es wird keine IP an Dritte gesendet. Dasselbe gilt für den optionalen Standort zu IP-Adressen (GeoLite2 von MaxMind): MaxMind bekommt nur die Download-Anfrage mit deinem Konto, die Abfragen laufen auf deinem Server. Die Datenbank liegt im Volume `sso-geoip` und gehört nicht zu diesem Repository (die MaxMind-Lizenz erlaubt keine Weitergabe).
 
 Zum Design: Hochgeladene SVG-Logos werden auf Skripte, Event-Handler und externe Verweise geprüft und mit einer sandboxenden Content-Security-Policy ausgeliefert. Änderungen an E-Mail-Versand und Cloudflare verlangen das Passwort des Admins erneut, weil wer den Mailversand kontrolliert, Anmelde- und Reset-Codes mitlesen kann. Alle Änderungen landen im Audit-Log.
 

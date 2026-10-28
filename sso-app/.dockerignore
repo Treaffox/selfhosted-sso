@@ -9,3 +9,4 @@ prisma/dev.db-journal
 .gitignore
 README.md
 CLAUDE.md
+geoip

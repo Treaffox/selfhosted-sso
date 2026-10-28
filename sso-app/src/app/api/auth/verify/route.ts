@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { validateSessionToken, getSessionTokenFromRequest } from "@/lib/session";
+import { validateSessionToken, getSessionTokenFromRequest, getGuestTokenFromRequest } from "@/lib/session";
+import { validateGuestCookie } from "@/lib/guest-access";
 import { sha256 } from "@/lib/crypto";
 import { getAvatarUrl } from "@/lib/avatar";
 import { logAudit } from "@/lib/audit";
@@ -38,60 +39,79 @@ function firstInWindow(key: string, windowMs: number): boolean {
  * identity must fail loudly, not silently grant access to any SSO user.
  */
 export async function GET(request: NextRequest) {
-  // Get session token from cookie
   const sessionToken = getSessionTokenFromRequest(request);
-  if (!sessionToken) {
+  const session = sessionToken ? await validateSessionToken(sessionToken) : null;
+  const guestToken = session ? null : getGuestTokenFromRequest(request);
+  if (!session && !guestToken) {
     return new NextResponse(null, { status: 401 });
-  }
-
-  // Validate session
-  const session = await validateSessionToken(sessionToken);
-  if (!session) {
-    return new NextResponse(null, { status: 401 });
-  }
-
-  // Accounts that still have to change a temporary password get no access to apps
-  // (same rule the OAuth flows apply at login time)
-  if (session.user.forcePasswordChange) {
-    if (firstInWindow(`force:${session.user.id}`, DENIED_WINDOW_MS)) {
-      await logAudit(
-        "APP_ACCESS_DENIED",
-        { reason: N_("Passwortänderung erforderlich"), path: (request.headers.get("x-original-uri") ?? "").split("?")[0].slice(0, 500) || undefined },
-        session.user.id,
-        getClientIp(request),
-        { outcome: "DENIED", authVia: "EXISTING_SESSION" }
-      );
-    }
-    return new NextResponse(null, { status: 403 });
   }
 
   // Resolve the app either via its secret token or its public id
   const appToken = request.headers.get("x-app-token");
   const appId = request.nextUrl.searchParams.get("app_id");
 
+  const loadApp = () => {
+    const select = { id: true, isActive: true, defaultPermission: true } as const;
+    return appToken
+      ? db.app.findUnique({ where: { tokenHash: sha256(appToken) }, select })
+      : db.app.findUnique({ where: { id: appId! }, select });
+  };
+
+  // Who is asking: a real SSO session, or a guest whose access is bound to exactly this app.
+  // A guest cookie that doesn't fit this app (or ran out) counts as "not signed in", so the visitor can log in normally.
+  let user: { id: string; username: string; email: string | null; avatarUpdatedAt: Date | null; forcePasswordChange: boolean };
+  let subject: string; // identifies the session/grant for the access log window
+  let guestUntil: Date | null = null;
+  let app: Awaited<ReturnType<typeof loadApp>> | undefined;
+
+  if (session) {
+    user = session.user;
+    subject = session.id;
+  } else {
+    if (!appToken && !appId) return new NextResponse(null, { status: 400 });
+    app = await loadApp();
+    const grant = app?.isActive ? await validateGuestCookie(guestToken!, app.id) : null;
+    if (!grant) return new NextResponse(null, { status: 401 });
+    user = grant.user;
+    subject = grant.id;
+    guestUntil = grant.expiresAt;
+  }
+  const authVia = session ? "EXISTING_SESSION" : "GUEST";
+
+  // Accounts that still have to change a temporary password get no access to apps
+  // (same rule the OAuth flows apply at login time)
+  if (user.forcePasswordChange) {
+    if (firstInWindow(`force:${user.id}`, DENIED_WINDOW_MS)) {
+      await logAudit(
+        "APP_ACCESS_DENIED",
+        { reason: N_("Passwortänderung erforderlich"), path: (request.headers.get("x-original-uri") ?? "").split("?")[0].slice(0, 500) || undefined },
+        user.id,
+        getClientIp(request),
+        { outcome: "DENIED", authVia }
+      );
+    }
+    return new NextResponse(null, { status: 403 });
+  }
+
   if (!appToken && !appId) {
     return new NextResponse(null, { status: 400 });
   }
-
-  const app = appToken
-    ? await db.app.findUnique({
-        where: { tokenHash: sha256(appToken) },
-        select: { id: true, isActive: true, defaultPermission: true },
-      })
-    : await db.app.findUnique({
-        where: { id: appId! },
-        select: { id: true, isActive: true, defaultPermission: true },
-      });
+  if (app === undefined) app = await loadApp();
 
   // Prepare response headers
   const headers = new Headers();
-  headers.set("X-User-Id", session.user.id);
-  headers.set("X-Username", session.user.username);
-  if (session.user.email) {
-    headers.set("X-Email", session.user.email);
+  headers.set("X-User-Id", user.id);
+  headers.set("X-Username", user.username);
+  if (user.email) {
+    headers.set("X-Email", user.email);
+  }
+  // Guest access: the app may want to treat it differently and should end its own session no later than this
+  if (guestUntil) {
+    headers.set("X-Guest", "1");
+    headers.set("X-Guest-Expires", guestUntil.toISOString());
   }
 
-  const avatarUrl = getAvatarUrl(session.user);
+  const avatarUrl = getAvatarUrl(user);
   if (avatarUrl) headers.set("X-Avatar-Url", avatarUrl);
 
   // Original request as seen by nginx (only if the proxy config forwards it – path only, no query string)
@@ -103,19 +123,19 @@ export async function GET(request: NextRequest) {
     logAudit(
       action,
       { path: accessPath, reason, host: originalHost },
-      session.user.id,
+      user.id,
       ip,
       {
         appId: app?.id ?? appId ?? undefined,
         outcome: action === "APP_ACCESS" ? "SUCCESS" : "DENIED",
-        authVia: "EXISTING_SESSION",
+        authVia,
         requestPath: originalPath,
         requestMethod: request.headers.get("x-original-method") ?? undefined,
       }
     );
 
   if (!app || !app.isActive) {
-    if (firstInWindow(`deny:${session.user.id}:${appId ?? "?"}`, DENIED_WINDOW_MS)) {
+    if (firstInWindow(`deny:${user.id}:${appId ?? "?"}`, DENIED_WINDOW_MS)) {
       await audit("APP_ACCESS_DENIED", app ? N_("App deaktiviert") : N_("App unbekannt"));
     }
     return new NextResponse(null, { status: 403, headers });
@@ -123,7 +143,7 @@ export async function GET(request: NextRequest) {
 
   const permission = await db.userAppPermission.findUnique({
     where: {
-      userId_appId: { userId: session.user.id, appId: app.id },
+      userId_appId: { userId: user.id, appId: app.id },
     },
     select: { permissionLevel: true },
   });
@@ -133,13 +153,13 @@ export async function GET(request: NextRequest) {
 
   // DENY → 403
   if (level === "DENY") {
-    if (firstInWindow(`deny:${session.user.id}:${app.id}`, DENIED_WINDOW_MS)) {
+    if (firstInWindow(`deny:${user.id}:${app.id}`, DENIED_WINDOW_MS)) {
       await audit("APP_ACCESS_DENIED", "Berechtigung DENY");
     }
     return new NextResponse(null, { status: 403, headers });
   }
 
-  if (firstInWindow(`ok:${session.user.id}:${app.id}:${session.id}`, ACCESS_WINDOW_MS)) {
+  if (firstInWindow(`ok:${user.id}:${app.id}:${subject}`, ACCESS_WINDOW_MS)) {
     await audit("APP_ACCESS");
   }
 

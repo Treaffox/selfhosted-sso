@@ -81,6 +81,7 @@ export async function PATCH(
       // A reset usually follows a suspicion: nobody may stay logged in with the old credentials
       await db.session.deleteMany({ where: { userId: id } });
       await db.trustedDevice.deleteMany({ where: { userId: id } });
+      await db.guestGrant.deleteMany({ where: { userId: id } });
     }
 
     if (body.email !== undefined) {

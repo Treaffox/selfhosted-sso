@@ -8,8 +8,9 @@ import {
   revokeTrustedDevices,
 } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
+import { listGuestGrants, revokeGuestGrants } from "@/lib/guest-access";
 
-/** GET: List active sessions and trusted devices. */
+/** GET: List active sessions, trusted devices and guest accesses. */
 export async function GET(request: Request) {
   const session = await getSession();
   if (!session) {
@@ -30,16 +31,19 @@ export async function GET(request: Request) {
 
   const trustedDevices = await listTrustedDevices(session.user.id, getTrustedDeviceTokenFromRequest(request));
 
+  const guestGrants = await listGuestGrants(session.user.id);
+
   return NextResponse.json({
     sessions: sessions.map((s) => ({
       ...s,
       isCurrent: s.id === session.id,
     })),
     trustedDevices,
+    guestGrants,
   });
 }
 
-/** DELETE: Revoke a session, or a trusted device (`trustedDeviceId`; "all" removes every one). */
+/** DELETE: Revoke a session, a trusted device (`trustedDeviceId`) or a guest access (`guestGrantId`); "all" removes every one. */
 export async function DELETE(request: Request) {
   const session = await getSession();
   if (!session) {
@@ -55,6 +59,22 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Gerät nicht gefunden" }, { status: 404 });
     }
     await logAudit("TRUSTED_DEVICE_REVOKED", { count: removed }, session.user.id);
+    return NextResponse.json({ success: true });
+  }
+
+  if (typeof body?.guestGrantId === "string") {
+    const id = body.guestGrantId;
+    const ended = await revokeGuestGrants(session.user.id, id === "all" ? undefined : id);
+    if (ended.length === 0 && id !== "all") {
+      return NextResponse.json({ error: "Gast-Zugang nicht gefunden" }, { status: 404 });
+    }
+    await logAudit(
+      "GUEST_ACCESS_REVOKED",
+      { all: id === "all", count: ended.length },
+      session.user.id,
+      undefined,
+      id === "all" ? {} : { appId: ended[0]?.appId, appName: ended[0]?.app.name }
+    );
     return NextResponse.json({ success: true });
   }
 

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { db } from "./db";
 import { generateToken } from "./crypto";
-import { getCookieDomain, isHttpsDeployment, sessionCookieName, trustedDeviceCookieName } from "./config";
+import { getCookieDomain, guestCookieName, isHttpsDeployment, sessionCookieName, trustedDeviceCookieName } from "./config";
 import { storedToken, tokenLookupKeys } from "./token-store";
 
 
@@ -125,6 +125,27 @@ export async function validateSessionToken(token: string) {
   return loadSession(token);
 }
 
+// ─── Guest cookie ────────────────────────────────────
+
+/** Set the guest cookie (raw token); it lives exactly as long as the grant. */
+export async function setGuestCookie(rawToken: string, expiresAt: Date) {
+  const maxAgeSeconds = Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+  const cookieStore = await cookies();
+  cookieStore.set(guestCookieName(), rawToken, cookieOptions(maxAgeSeconds));
+}
+
+export async function clearGuestCookie() {
+  const cookieStore = await cookies();
+  cookieStore.set(guestCookieName(), "", cookieOptions(0));
+}
+
+/** Get the guest token from a Request object. */
+export function getGuestTokenFromRequest(request: Request): string | null {
+  const cookieHeader = request.headers.get("cookie") ?? "";
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${guestCookieName()}=([^;]*)`));
+  return match?.[1] ?? null;
+}
+
 // ─── Trusted Devices ─────────────────────────────────
 
 /** Create a trusted device entry and set the cookie. */
@@ -223,5 +244,7 @@ export async function cleanupExpired() {
     db.trustedDevice.deleteMany({ where: { expiresAt: { lt: now } } }),
     db.authCode.deleteMany({ where: { expiresAt: { lt: now } } }),
     db.emailCode.deleteMany({ where: { expiresAt: { lt: now } } }),
+    db.deviceLoginRequest.deleteMany({ where: { expiresAt: { lt: now } } }),
+    db.guestGrant.deleteMany({ where: { expiresAt: { lt: now } } }),
   ]);
 }

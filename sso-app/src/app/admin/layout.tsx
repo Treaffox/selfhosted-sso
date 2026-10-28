@@ -3,6 +3,7 @@ import { getSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { DeviceRequestPrompt } from "@/components/device/device-request-prompt";
 import { getBrandView } from "@/lib/site-settings";
 import { getSecuritySettings } from "@/lib/security-settings";
 
@@ -38,6 +39,7 @@ export default async function AdminLayout({
         {children}
       </main>
       <Footer brand={brand} />
+      <DeviceRequestPrompt />
     </div>
   );
 }

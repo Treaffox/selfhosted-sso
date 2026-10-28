@@ -96,3 +96,21 @@ export function resetReauth(userId: string): void {
 export function rateLimitEmailVerify(userId: string): RateLimitResult {
   return checkRateLimit(`emailverify:${userId}`, 5, 15 * 60 * 1000);
 }
+
+/** New device-login / guest requests from one client IP. */
+export function rateLimitDeviceRequest(ip: string): RateLimitResult {
+  return checkRateLimit(`devreq:${ip}`, 10, 15 * 60 * 1000);
+}
+
+/**
+ * New requests aimed at one account. Not answered with an error when exceeded (that would reveal the account exists):
+ * the caller hands out a decoy request instead.
+ */
+export function rateLimitDeviceRequestPerAccount(userId: string): RateLimitResult {
+  return checkRateLimit(`devreq-user:${userId}`, 5, 15 * 60 * 1000);
+}
+
+/** Approvals / denials by the signed-in owner (QR link or typed code). */
+export function rateLimitDeviceApprove(userId: string): RateLimitResult {
+  return checkRateLimit(`devapprove:${userId}`, 30, 15 * 60 * 1000);
+}

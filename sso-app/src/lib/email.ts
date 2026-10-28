@@ -2,6 +2,8 @@ import { renderEmailTemplate, readableOn, type MailBrand } from "./email-templat
 import { deliverMail } from "./mail";
 import { getAssetInfos, getSiteSettings, absoluteUrl } from "./site-settings";
 import { getAppUrl } from "./config";
+import { describeDevice } from "./device-info";
+import { locateIp } from "./geoip";
 import { N_, dateLocale, isLocale, makeT, type Locale, type TFunction } from "./i18n/core";
 import { getLocale, messagesFor } from "./i18n/server";
 
@@ -30,26 +32,6 @@ const METHOD_LABELS: Record<string, string> = {
   PASSWORD_TRUSTED_DEVICE: N_("Passwort (vertrauenswürdiges Gerät)"),
   RECOVERY_CODE: N_("Wiederherstellungscode"),
 };
-
-/** "Chrome auf Windows" instead of the raw user agent string. */
-function describeDevice(userAgent: string, t: TFunction): string {
-  const browser =
-    /Edg\//.test(userAgent) ? "Edge"
-    : /OPR\/|Opera/.test(userAgent) ? "Opera"
-    : /Firefox\//.test(userAgent) ? "Firefox"
-    : /Chrome\/|CriOS/.test(userAgent) ? "Chrome"
-    : /Safari\//.test(userAgent) ? "Safari"
-    : null;
-  const os =
-    /Windows/.test(userAgent) ? "Windows"
-    : /Android/.test(userAgent) ? "Android"
-    : /iPhone|iPad|iPod/.test(userAgent) ? "iOS"
-    : /Mac OS X|Macintosh/.test(userAgent) ? "macOS"
-    : /Linux/.test(userAgent) ? "Linux"
-    : null;
-  if (browser && os) return t("{browser} auf {os}", { browser, os });
-  return browser ?? os ?? t("Unbekanntes Gerät");
-}
 
 /**
  * Language of a mail: the recipient's own setting, else the language of the current request (the person who
@@ -92,7 +74,7 @@ export async function sendLoginNotificationEmail(
   recipientLocale?: string | null
 ): Promise<boolean> {
   const [brand, site, { t, locale }] = await Promise.all([getMailBrand(), getSiteSettings(), mailI18n(recipientLocale)]);
-  const device = describeDevice(userAgent, t);
+  const device = t(describeDevice(userAgent));
   const methodLabel = method ? (METHOD_LABELS[method] ? t(METHOD_LABELS[method]) : method) : t("Unbekannt");
   const when = timestamp.toLocaleString(dateLocale(locale), {
     timeZone: site.timeZone,
@@ -119,6 +101,48 @@ export async function sendLoginNotificationEmail(
       "",
       t("Falls du das nicht warst, ändere sofort dein Passwort und überprüfe deine Sicherheitseinstellungen:"),
       settingsUrl,
+    ].join("\n"),
+  });
+}
+
+/** Tells the account owner that a guest was given access to an app (shown with the guest device's place, if known). */
+export async function sendGuestAccessEmail(
+  to: string,
+  username: string,
+  appName: string,
+  until: Date,
+  ipAddress: string,
+  userAgent: string | null | undefined,
+  recipientLocale?: string | null
+): Promise<boolean> {
+  const [brand, site, { t, locale }] = await Promise.all([getMailBrand(), getSiteSettings(), mailI18n(recipientLocale)]);
+  const device = t(describeDevice(userAgent));
+  const location = await locateIp(ipAddress, locale);
+  const untilText = until.toLocaleString(dateLocale(locale), {
+    timeZone: site.timeZone,
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+  const sessionsUrl = `${getAppUrl()}/settings/sessions`;
+  return deliverMail({
+    to,
+    subject: t("Gast-Zugang für {app} freigegeben", { app: appName }),
+    html: renderEmailTemplate("guest-access", { username, appName, until: untilText, device, ipAddress, location, sessionsUrl }, brand, t, locale),
+    text: [
+      t("Hallo {username},", { username }),
+      "",
+      t("du hast einem Gast Zugriff auf eine App gegeben:"),
+      `${t("App")}: ${appName}`,
+      `${t("Gültig bis")}: ${untilText}`,
+      `${t("Gerät")}: ${device}`,
+      `${t("IP-Adresse")}: ${ipAddress}`,
+      ...(location ? [`${t("Standort (ca.)")}: ${location}`] : []),
+      "",
+      t("Der Gast hat nur Zugriff auf diese App, nicht auf dein SSO-Konto. Falls du das nicht warst, beende den Zugang sofort:"),
+      sessionsUrl,
     ].join("\n"),
   });
 }

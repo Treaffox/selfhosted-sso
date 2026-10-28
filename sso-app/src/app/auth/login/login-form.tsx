@@ -10,8 +10,10 @@ import { LanguageToggle } from "@/components/ui/language-toggle";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import type { BrandView } from "@/lib/site-settings";
 import { useI18n } from "@/components/i18n-provider";
+import { MonitorSmartphoneIcon, UserRoundIcon } from "@/components/ui/icons";
+import { DeviceWait, type DeviceKind } from "./device-wait";
 
-type Step = "username" | "method_select" | "password" | "mfa";
+type Step = "username" | "method_select" | "password" | "mfa" | "device";
 
 interface LoginState {
   loginToken: string;
@@ -52,6 +54,7 @@ function LoginPageContent({ returnTo, brand }: { returnTo: string | null; brand:
   const [emailMasked, setEmailMasked] = useState("");
 
   const [direction, setDirection] = useState<"forward" | "back">("forward");
+  const [deviceKind, setDeviceKind] = useState<DeviceKind>("DEVICE");
 
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -61,6 +64,8 @@ function LoginPageContent({ returnTo, brand }: { returnTo: string | null; brand:
   const appId = searchParams.get("app_id");
   const redirectUri = searchParams.get("redirect_uri");
   const stateParam = searchParams.get("state");
+  // A guest gets access to one app, so this only makes sense when the login comes from an app
+  const hasAppContext = !!appId || /\/oauth\/authorize(\?|$)/.test(returnTo ?? "");
 
   useEffect(() => {
     usernameRef.current?.focus();
@@ -233,6 +238,30 @@ function LoginPageContent({ returnTo, brand }: { returnTo: string | null; brand:
     }
   };
 
+  // Sign in with an approval on another device, or as a guest of one app
+  const startDevice = (kind: DeviceKind) => {
+    setDeviceKind(kind);
+    goToStep("device");
+  };
+
+  const alternativeMethods = () => (
+    <div className="mt-5 pt-5 border-t border-border space-y-3">
+      <Button variant="secondary" className="w-full justify-start gap-3 py-3" onClick={() => startDevice("DEVICE")}>
+        <MonitorSmartphoneIcon size={20} />
+        {t("Mit anderem Gerät anmelden")}
+      </Button>
+      {hasAppContext && (
+        <Button variant="secondary" className="w-full justify-start gap-3 py-3" onClick={() => startDevice("GUEST")}>
+          <UserRoundIcon size={20} />
+          <span className="text-left">
+            {t("Als Gast anmelden")}
+            <span className="block text-xs text-muted font-semibold">{t("Nur Zugriff auf diese App")}</span>
+          </span>
+        </Button>
+      )}
+    </div>
+  );
+
   // ─── Render ─────────────────────────────────────────
 
   const animClass =
@@ -336,6 +365,7 @@ function LoginPageContent({ returnTo, brand }: { returnTo: string | null; brand:
                     {t("Passwort eingeben")}
                   </Button>
                 </div>
+                {alternativeMethods()}
               </div>
             )}
 
@@ -376,6 +406,7 @@ function LoginPageContent({ returnTo, brand }: { returnTo: string | null; brand:
                     {t("Anmelden")}
                   </Button>
                 </form>
+                {alternativeMethods()}
               </div>
             )}
 
@@ -514,6 +545,20 @@ function LoginPageContent({ returnTo, brand }: { returnTo: string | null; brand:
                     </button>
                   )}
                 </form>
+              </div>
+            )}
+
+            {/* Step: approval on another device / guest */}
+            {step === "device" && (
+              <div key="device" className={animClass}>
+                <DeviceWait
+                  loginToken={state.loginToken}
+                  kind={deviceKind}
+                  username={username}
+                  returnTo={returnTo}
+                  onDone={handleLoginRedirect}
+                  onBack={() => goBack(state.hasPasskeys ? "method_select" : "password")}
+                />
               </div>
             )}
           </div>

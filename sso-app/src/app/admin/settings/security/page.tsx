@@ -51,25 +51,28 @@ export default function SecuritySettingsPage() {
   );
 
   return (
-    <form onSubmit={save} className="space-y-6">
+    <div className="space-y-6">
       <PageTitle title={t("Sicherheit")} />
+      {/* Outside the form: a form inside a form (the dialog's own) is not submitted properly by browsers */}
       {passwordPrompt}
 
-      <Card>
-        <CardTitle>{t("Zwei-Faktor-Anmeldung (MFA)")}</CardTitle>
-        <p className="text-sm text-muted mt-1 mb-4">{t("Legt fest, ob sich Nutzer mit einem zweiten Faktor (Authenticator-App oder E-Mail-Code) anmelden müssen. Passkeys sind davon unabhängig und gelten immer als starke Anmeldung.")}</p>
-        <div className="space-y-3">
-          {option(true, t("Verpflichtend (empfohlen)"), t("Jedes Konto braucht einen zweiten Faktor. Wer noch keinen hat, wird nach der Anmeldung zur Einrichtung geleitet; Admins kommen erst nach der Einrichtung in den Admin-Bereich."))}
-          {option(false, t("Optional"), t("Nutzer melden sich mit dem Passwort an. Nur wer in seinen Einstellungen eine Authenticator-App aktiviert hat, wird nach einem Code gefragt. Der Admin-Bereich ist auch ohne MFA erreichbar."))}
-        </div>
-        {requireMfa === false && (
-          <p className="mt-4 text-xs font-semibold text-warning">{t("Ohne verpflichtendes MFA reicht ein erratenes oder gestohlenes Passwort für den Zugang, auch zum Admin-Konto. Aktiviere MFA mindestens für Admins in deren Einstellungen.")}</p>
-        )}
-      </Card>
+      <form onSubmit={save} className="space-y-6">
+        <Card>
+          <CardTitle>{t("Zwei-Faktor-Anmeldung (MFA)")}</CardTitle>
+          <p className="text-sm text-muted mt-1 mb-4">{t("Legt fest, ob sich Nutzer mit einem zweiten Faktor (Authenticator-App oder E-Mail-Code) anmelden müssen. Passkeys sind davon unabhängig und gelten immer als starke Anmeldung.")}</p>
+          <div className="space-y-3">
+            {option(true, t("Verpflichtend (empfohlen)"), t("Jedes Konto braucht einen zweiten Faktor. Wer noch keinen hat, wird nach der Anmeldung zur Einrichtung geleitet; Admins kommen erst nach der Einrichtung in den Admin-Bereich."))}
+            {option(false, t("Optional"), t("Nutzer melden sich mit dem Passwort an. Nur wer in seinen Einstellungen eine Authenticator-App aktiviert hat, wird nach einem Code gefragt. Der Admin-Bereich ist auch ohne MFA erreichbar."))}
+          </div>
+          {requireMfa === false && (
+            <p className="mt-4 text-xs font-semibold text-warning">{t("Ohne verpflichtendes MFA reicht ein erratenes oder gestohlenes Passwort für den Zugang, auch zum Admin-Konto. Aktiviere MFA mindestens für Admins in deren Einstellungen.")}</p>
+          )}
+        </Card>
 
-      <Button type="submit" loading={saving} disabled={requireMfa === saved}>
-        {t("Speichern")}
-      </Button>
-    </form>
+        <Button type="submit" loading={saving} disabled={requireMfa === saved}>
+          {t("Speichern")}
+        </Button>
+      </form>
+    </div>
   );
 }

@@ -28,6 +28,8 @@ model User {
   sessionDurationHours Int?     // null = use server default (SESSION_MAX_AGE_HOURS)
   avatarUpdatedAt     DateTime? // null = no profile picture; also used as cache-busting version
   locale              String?   // "de" | "en"; null = automatic (browser language / IP country)
+  guestLoginEnabled   Boolean   @default(true)  // others may ask for a guest access to an app (never for the master account)
+  deviceLoginEnabled  Boolean   @default(true)  // this account may be signed in on another device via approval
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -42,6 +44,8 @@ model User {
   emailCodes     EmailCode[]
   accessTokens   OAuthAccessToken[]
   avatar         UserAvatar?
+  deviceLoginRequests DeviceLoginRequest[]
+  guestGrants    GuestGrant[]
 }
 
 // Profile picture bytes live in their own table so regular User queries never load the blob.
@@ -80,6 +84,7 @@ model App {
   authCodes     AuthCode[]
   accessTokens  OAuthAccessToken[]
   dnsRecords    AppDnsRecord[]
+  guestGrants   GuestGrant[]
 }
 
 // DNS records managed via the Cloudflare API on behalf of an app. Only records
@@ -190,6 +195,9 @@ model AuthCode {
   codeChallengeMethod String? // "S256" or "plain"
   nonce           String?  // OIDC nonce for ID token
 
+  guestGrantId    String?  // set for guest logins: ends together with the grant
+  guestGrant      GuestGrant? @relation(fields: [guestGrantId], references: [id], onDelete: Cascade)
+
   app App @relation(fields: [appId], references: [id], onDelete: Cascade)
 }
 
@@ -204,8 +212,66 @@ model OAuthAccessToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
+  guestGrantId String? // set for guest logins: the token dies with the grant
+  guestGrant   GuestGrant? @relation(fields: [guestGrantId], references: [id], onDelete: Cascade)
+
   app  App  @relation(fields: [appId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Device login / guest access ─────────────────────
+
+// A sign-in that is approved on a second device. The waiting device shows a QR code (link token) and a 6-digit
+// code; the account owner confirms via the link or by typing the code on an SSO page they are signed in to.
+// The code is not stored: it is derived from the request id with a server key (lib/device-login.ts, codeOf).
+//  - DEVICE: the waiting device gets a normal SSO session
+//  - GUEST:  the waiting device only gets access to one app (see GuestGrant), no SSO session
+model DeviceLoginRequest {
+  id             String    @id @default(cuid())
+  kind           String    // GUEST | DEVICE
+  status         String    @default("PENDING") // PENDING | APPROVED | DENIED | EXPIRED | CONSUMED
+  userId         String?   // null = decoy for an unknown/opted-out account: looks identical, can never be approved
+  tokenHash      String    @unique // sha256 of the QR link token
+  pollHash       String    // sha256 of the secret only the waiting device holds
+  loginSessionId String?   // the multi-step login this request belongs to
+  appId          String?
+  redirectUri    String?
+  state          String?
+  oidcRequest    String?   // JSON: validated /oauth/authorize parameters (guest logins started via OIDC)
+  ipAddress      String    // requesting device, encrypted
+  userAgent      String?   // requesting device, encrypted
+  durationHours  Int?      // guest access: chosen by the approving user
+  failedAttempts Int       @default(0)
+  approvedAt     DateTime?
+  expiresAt      DateTime
+  createdAt      DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([expiresAt])
+}
+
+// Limited access of a guest to exactly one app. Auth codes and access tokens issued for it reference it, so
+// ending the grant (or its expiry) ends them. Apps behind nginx auth_request use the `sso_guest` cookie (tokenHash).
+model GuestGrant {
+  id         String   @id @default(cuid())
+  userId     String
+  appId      String
+  tokenHash  String?  @unique // sha256 of the cookie token; null for pure OAuth/OIDC grants
+  ipAddress  String   // guest device, encrypted
+  userAgent  String?  // guest device, encrypted
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  app          App                @relation(fields: [appId], references: [id], onDelete: Cascade)
+  authCodes    AuthCode[]
+  accessTokens OAuthAccessToken[]
+
+  @@index([userId])
+  @@index([appId])
+  @@index([expiresAt])
 }
 
 // ─── IP Rules ─────────────────────────────────────────

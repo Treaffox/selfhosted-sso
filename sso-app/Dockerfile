@@ -25,6 +25,9 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
+# GeoLite2 database downloaded from MaxMind (Admin → System → GeoIP). Mounted as a volume, see docker-compose.yml.
+RUN mkdir -p /app/geoip && chown nextjs:nodejs /app/geoip
+
 # All node_modules (Prisma CLI + engine + seed deps)
 COPY --from=builder /app/prisma ./prisma
 

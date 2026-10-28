@@ -19,7 +19,12 @@ export default function AdminDashboard() {
     if (status.ok) {
       const { checklist } = await status.json();
       setOpen(
-        [!checklist.server && t("Server-Adresse (HTTPS)"), !checklist.branding && t("Name und Logo"), !checklist.mail && t("E-Mail-Versand")].filter(Boolean) as string[]
+        [
+          !checklist.server && t("Server-Adresse (HTTPS)"),
+          !checklist.branding && t("Name und Logo"),
+          !checklist.mail && t("E-Mail-Versand"),
+          !checklist.geoip && t("MaxMind-Daten für GeoIP"),
+        ].filter(Boolean) as string[]
       );
     }
     setLoading(false);

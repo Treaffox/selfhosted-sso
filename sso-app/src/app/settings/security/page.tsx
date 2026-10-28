@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { Switch } from "@/components/ui/switch";
 import { PageTitle } from "@/components/ui/page-title";
 import { usePasswordPrompt } from "@/components/ui/password-prompt";
 import { toast } from "sonner";
@@ -181,6 +182,20 @@ export default function SecurityPage() {
     const data = await res.json();
     res.ok ? toast.success(t("Gespeichert")) : toast.error(te(data.error));
     setSessionDurationSaving(false);
+  };
+
+  // --- Approval-based sign-in (guest / other device) ---
+  const [deviceLoginSaving, setDeviceLoginSaving] = useState<string | null>(null);
+  const setDeviceLogin = async (field: "guestLoginEnabled" | "deviceLoginEnabled", value: boolean) => {
+    setDeviceLoginSaving(field);
+    const res = await fetch("/api/settings/device-login", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+    if (res.ok) setProfile((p: any) => ({ ...p, [field]: value }));
+    else toast.error(te((await res.json().catch(() => ({}))).error, "Fehler"));
+    setDeviceLoginSaving(null);
   };
 
   // --- Recovery Codes ---
@@ -382,6 +397,46 @@ export default function SecurityPage() {
         <p className="text-xs text-muted mt-3">
           {t("Die neue Dauer gilt sofort für deine aktuelle Sitzung sowie für zukünftige Anmeldungen.")}
         </p>
+      </Card>
+
+      {/* Approval-based sign-in */}
+      <Card>
+        <CardTitle>{t("Anmeldung mit Freigabe")}</CardTitle>
+        <CardDescription>
+          {t("Du bestätigst jede Anfrage selbst, per QR-Code oder indem du den angezeigten Code eingibst.")}
+        </CardDescription>
+        <div className="mt-4 divide-y divide-border">
+          {!profile.isMaster && (
+            <div className="flex items-center justify-between gap-4 py-3 first:pt-0">
+              <div>
+                <p className="text-sm font-bold">{t("Gast-Anmeldung erlauben")}</p>
+                <p className="text-xs text-muted mt-0.5">
+                  {t("Andere können für kurze Zeit Zugriff auf eine einzelne App anfragen, ohne dein Konto zu sehen.")}
+                </p>
+              </div>
+              <Switch
+                label={t("Gast-Anmeldung erlauben")}
+                checked={profile.guestLoginEnabled}
+                disabled={deviceLoginSaving === "guestLoginEnabled"}
+                onChange={(v) => setDeviceLogin("guestLoginEnabled", v)}
+              />
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-4 py-3 last:pb-0">
+            <div>
+              <p className="text-sm font-bold">{t("Anmeldung auf anderem Gerät erlauben")}</p>
+              <p className="text-xs text-muted mt-0.5">
+                {t("Du kannst ein Gerät anmelden, indem du es auf einem bereits angemeldeten Gerät freigibst.")}
+              </p>
+            </div>
+            <Switch
+              label={t("Anmeldung auf anderem Gerät erlauben")}
+              checked={profile.deviceLoginEnabled}
+              disabled={deviceLoginSaving === "deviceLoginEnabled"}
+              onChange={(v) => setDeviceLogin("deviceLoginEnabled", v)}
+            />
+          </div>
+        </div>
       </Card>
 
       {/* Recovery Codes */}

@@ -27,11 +27,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { t } = await getT();
+    const { t, locale } = await getT();
     const body = await request.json().catch(() => ({}));
     // Sentences are stored in German; show them in the admin's language
     const localized = <R extends { action: string; actorName: string | null; appName: string | null; appId: string | null; details: unknown; message: string | null }>(rows: R[]) =>
-      rows.map((r) => ({ ...r, message: renderAuditMessage(r, t) }));
+      rows.map((r) => ({ ...r, message: renderAuditMessage(r, t, locale) }));
     const { where, memoryFilter } = buildAuditWhere(body.filters, body.mode, body.from, body.to);
     const limit = Math.min(Math.max(parseInt(body.limit, 10) || 100, 1), MAX_LIMIT);
     const offset = Math.max(parseInt(body.offset, 10) || 0, 0);

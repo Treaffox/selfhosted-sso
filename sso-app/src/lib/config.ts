@@ -43,3 +43,5 @@ function cookiePrefix(): string {
 }
 export const sessionCookieName = () => `${cookiePrefix()}sso_session`;
 export const trustedDeviceCookieName = () => `${cookiePrefix()}sso_trusted`;
+/** Guest access to one app behind nginx auth_request. Never accepted by the SSO pages themselves. */
+export const guestCookieName = () => `${cookiePrefix()}sso_guest`;

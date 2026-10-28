@@ -259,7 +259,8 @@ export async function createAuthCode(
   userId: string,
   permissionLevel: string,
   redirectUri: string,
-  state?: string
+  state?: string,
+  guestGrantId?: string
 ): Promise<string> {
   const code = generateToken(32);
   await db.authCode.create({
@@ -270,6 +271,7 @@ export async function createAuthCode(
       permissionLevel,
       redirectUri,
       state,
+      guestGrantId,
       expiresAt: new Date(Date.now() + AUTH_CODE_TTL),
     },
   });
@@ -279,10 +281,15 @@ export async function createAuthCode(
 export async function exchangeAuthCode(code: string, appTokenHash: string) {
   const authCode = await db.authCode.findUnique({
     where: { code },
-    include: { app: true },
+    include: { app: true, guestGrant: { select: { expiresAt: true } } },
   });
 
   if (!authCode || authCode.used || authCode.expiresAt < new Date()) {
+    return null;
+  }
+
+  // Guest access that ran out (ending it removes the code together with the grant)
+  if (authCode.guestGrantId && (!authCode.guestGrant || authCode.guestGrant.expiresAt < new Date())) {
     return null;
   }
 
@@ -315,6 +322,8 @@ export async function exchangeAuthCode(code: string, appTokenHash: string) {
     username: user?.username,
     picture: user ? getAvatarUrl(user) : null,
     permission,
+    // Guest logins: the app should end its own session no later than this
+    ...(authCode.guestGrant ? { guest: true, expires_at: authCode.guestGrant.expiresAt.toISOString() } : {}),
   };
 }
 

@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import type { BrandView } from "@/lib/site-settings";
-import { CodeBlock, InlineCode, Section, Table } from "./parts";
+import { CodeBlock, InlineCode, Notice, Section, Table } from "./parts";
 
 export interface DocsProps {
   brand: BrandView;
@@ -21,6 +21,7 @@ const TOC: { id: string; label: string }[] = [
   { id: "profilbilder", label: "Profilbilder" },
   { id: "app-token", label: "App-Token-Flow" },
   { id: "berechtigungen", label: "Berechtigungen" },
+  { id: "gast-zugang", label: "Gast-Zugang" },
   { id: "reverse-proxy", label: "Reverse-Proxy" },
   { id: "sicherheit", label: "Sicherheits-Checkliste" },
   { id: "fehler", label: "Fehlerreferenz" },
@@ -425,6 +426,70 @@ const user = await res.json();
 }`}</CodeBlock>
               </Section>
 
+              <Section id="gast-zugang" title="Gast-Zugang">
+                <p>
+                  Nutzer können einem Gast für kurze Zeit Zugriff auf eine einzelne
+                  Anwendung geben, ohne ihre übrigen Anwendungen freizugeben: Der Gast fordert
+                  auf der Login-Seite einen QR-Code samt 6-stelligem Code an, der Besitzer des
+                  Kontos bestätigt auf einem angemeldeten Gerät und legt die Dauer fest (1, 8
+                  oder 24 Stunden). Der Gast bekommt <strong className="text-foreground">keine
+                  SSO-Session</strong> und sieht nichts vom Konto; deine Anwendung erhält
+                  Code, Token und Nutzerdaten wie bei jedem anderen Login. Jedes Konto kann
+                  Gast-Zugänge in den eigenen Einstellungen ausschalten; für das Admin-Konto gibt es sie nicht.
+                </p>
+                <Notice title="Setze die Gast-Logik in deiner Anwendung um">
+                  Der SSO kann einen Gast nur dort sofort beenden, wo er bei jeder Anfrage gefragt
+                  wird. Die eigene Session deiner Anwendung kennt er nicht. Ohne Gast-Logik bleibt
+                  der Gast nach Ablauf der Dauer oder nach dem vorzeitigen Beenden durch den
+                  Besitzer so lange angemeldet, bis die Session deiner Anwendung endet, oft erst
+                  nach Tagen. Das betrifft jede Anwendung mit eigener Session (OIDC und
+                  App-Token). Nur der Reverse-Proxy-Schutz ist ohne Änderung abgedeckt.
+                </Notice>
+                <p>
+                  Erkennbar ist ein Gast am Claim <InlineCode>guest: true</InlineCode> im{" "}
+                  <InlineCode>id_token</InlineCode> und in der{" "}
+                  <InlineCode>/oauth/userinfo</InlineCode>-Antwort, bei der App-Token-Variante
+                  an <InlineCode>guest</InlineCode> und <InlineCode>expires_at</InlineCode> in der
+                  Antwort von <InlineCode>/api/auth/token</InlineCode>, hinter dem Reverse-Proxy an{" "}
+                  <InlineCode>X-Guest: 1</InlineCode> und <InlineCode>X-Guest-Expires</InlineCode>.
+                  Access- und ID-Token laufen spätestens mit dem Gast-Zugang ab (<InlineCode>exp</InlineCode>);
+                  Refresh-Tokens gibt es nicht.
+                </p>
+                <Table
+                  head={["Anbindung", "Das beendet der SSO", "Das setzt deine Anwendung um"]}
+                  rows={[
+                    ["Reverse-Proxy (auth_request)", "Alles: Die Prüfung läuft bei jeder Anfrage, Beenden wirkt sofort.", "Nichts. Nur die Cookie-Map um sso_guest erweitern (siehe Reverse-Proxy-Schutz)."],
+                    ["OIDC (authorize/token)", "Die Tokens: exp reicht höchstens bis zum Ende des Gast-Zugangs, es gibt keinen Refresh-Token. Nach dem Beenden sind Access-Token und /oauth/userinfo sofort ungültig.", "Claim guest auswerten und die eigene Session höchstens bis exp des ID-Tokens laufen lassen. Für sofortiges Beenden das Access-Token regelmäßig (z. B. alle 30–60 s) gegen /oauth/userinfo prüfen; bei 401 die Session beenden."],
+                    ["App-Token (/api/auth/token)", "Nur neue Logins. Der Code wird einmal getauscht, danach fragt der SSO nicht mehr nach.", "guest und expires_at aus der Antwort lesen und die Session spätestens zu expires_at beenden. Für sofortiges Beenden die Gast-Session regelmäßig über /api/auth/verify prüfen (siehe unten); bei 401 die Session beenden."],
+                  ]}
+                />
+                <p>
+                  Antwort von <InlineCode>POST /api/auth/token</InlineCode> bei einem Gast:
+                </p>
+                <CodeBlock>{`{
+  "user_id": "cm0abc...",
+  "username": "max",
+  "picture": null,
+  "permission": "ALLOW",
+  "guest": true,
+  "expires_at": "2026-10-27T17:49:53.713Z"
+}`}</CodeBlock>
+                <p>
+                  Die Gast-Prüfung für App-Token-Anwendungen: Gib nur das Cookie{" "}
+                  <InlineCode>sso_guest</InlineCode> des Besuchers an den SSO weiter (nicht den
+                  ganzen Cookie-Header, sonst gilt eine eventuell vorhandene SSO-Session). Das
+                  Cookie hat die Domain <InlineCode>{cookieDomain}</InlineCode> und kommt nur bei
+                  Anwendungen auf dieser Domain an (dafür muss <InlineCode>COOKIE_DOMAIN</InlineCode> gesetzt
+                  sein). Dein Proxy darf es nicht entfernen. Anwendungen auf anderen Domains können nur{" "}
+                  <InlineCode>expires_at</InlineCode> bzw. <InlineCode>exp</InlineCode> durchsetzen.
+                </p>
+                <CodeBlock>{`GET ${appUrl}/api/auth/verify?app_id=DEINE_APP_ID
+Cookie: sso_guest=<Wert aus dem Browser des Besuchers>
+
+200  Gast-Zugang gültig (Header X-Guest: 1, X-Guest-Expires)
+401  beendet, abgelaufen oder für eine andere Anwendung -> Session beenden`}</CodeBlock>
+              </Section>
+
               <Section id="reverse-proxy" title="Reverse-Proxy-Schutz">
                 <p>
                   Für interne Tools ohne eigenen Login-Code lässt sich der Zugriff
@@ -432,15 +497,19 @@ const user = await res.json();
                   <InlineCode>auth_request</InlineCode>). Die Anwendung selbst
                   benötigt dann keinerlei SSO-Integrationscode:
                 </p>
-                <CodeBlock>{`# http-Ebene (einmal): Cookie-Header ohne sso_session/sso_trusted, für die App.
+                <CodeBlock>{`# http-Ebene (einmal): Cookie-Header ohne sso_session/sso_trusted/sso_guest, für die App.
 # Alle anderen Cookies der App bleiben unverändert; ein leeres Ergebnis lässt nginx den Header weglassen.
 map $http_cookie $cookie_no_session {
     default $http_cookie;
     "~^(?<pre>(?:.*;\\s*)?)sso_session=[^;]*(?:;\\s*(?<post>.*))?$" "$pre$post";
 }
-map $cookie_no_session $cookie_without_sso {
+map $cookie_no_session $cookie_no_trusted {
     default $cookie_no_session;
     "~^(?<pre2>(?:.*;\\s*)?)sso_trusted=[^;]*(?:;\\s*(?<post2>.*))?$" "$pre2$post2";
+}
+map $cookie_no_trusted $cookie_without_sso {
+    default $cookie_no_trusted;
+    "~^(?<pre3>(?:.*;\\s*)?)sso_guest=[^;]*(?:;\\s*(?<post3>.*))?$" "$pre3$post3";
 }
 
 location = /_sso_auth {
@@ -490,7 +559,10 @@ location @sso_login {
                   <InlineCode>X-User-Id</InlineCode>, <InlineCode>X-Username</InlineCode>,{" "}
                   <InlineCode>X-Permission</InlineCode>, <InlineCode>X-Email</InlineCode> (nur wenn
                   eine Adresse hinterlegt ist) und <InlineCode>X-Avatar-Url</InlineCode> (nur mit
-                  Profilbild). Ohne gültige Session kommt <InlineCode>401</InlineCode>; bei{" "}
+                  Profilbild). Bei einem Gast-Zugang (siehe Gast-Zugang) kommen{" "}
+                  <InlineCode>X-Guest: 1</InlineCode> und <InlineCode>X-Guest-Expires</InlineCode>{" "}
+                  dazu; das Cookie <InlineCode>sso_guest</InlineCode> gilt nur für die
+                  Anwendung, für die es ausgestellt wurde. Ohne gültige Session kommt <InlineCode>401</InlineCode>; bei{" "}
                   <InlineCode>DENY</InlineCode>, deaktivierter oder unbekannter Anwendung sowie bei
                   Konten, die noch ein temporäres Passwort ändern müssen, <InlineCode>403</InlineCode>.
                   Fehlt <InlineCode>app_id</InlineCode> (bzw. der Header{" "}
@@ -535,7 +607,7 @@ location @sso_login {
                     "id_token immer lokal gegen die JWKS verifizieren (Signatur, issuer, audience, Ablauf) – nicht ungeprüft dekodieren.",
                     "access_token nicht loggen und bei SPAs nicht in localStorage ablegen; bevorzugt serverseitige Sessions (Backend-for-Frontend).",
                     "Eigene Session-Cookies der Anwendung als httpOnly, secure und sameSite=lax|strict setzen.",
-                    "Hinter nginx auth_request: die SSO-Cookies (sso_session, sso_trusted) nicht an die App weiterreichen (proxy_set_header Cookie $cookie_without_sso), die App braucht sie nicht. Das Cookie gilt für alle Subdomains der COOKIE_DOMAIN; eine kompromittierte App könnte sonst die Session übernehmen.",
+                    "Hinter nginx auth_request: die SSO-Cookies (sso_session, sso_trusted, sso_guest) nicht an die App weiterreichen (proxy_set_header Cookie $cookie_without_sso), die App braucht sie nicht. Das Cookie gilt für alle Subdomains der COOKIE_DOMAIN; eine kompromittierte App könnte sonst die Session übernehmen.",
                     "Hinter nginx auth_request: X-Real-IP und X-Forwarded-For im Subrequest auf $remote_addr setzen, nie auf vom Client gelieferte Werte.",
                     "Den Identity-Headern (X-User-Id, X-Username, X-Permission) nur trauen, wenn die App ausschließlich über den Proxy erreichbar ist; vom Client mitgeschickte Header gleichen Namens im Proxy überschreiben.",
                     "Konten in deiner App über sub bzw. user_id verknüpfen, nie über E-Mail oder Benutzernamen (beides können Nutzer ändern bzw. wiederverwenden).",

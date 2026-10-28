@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { logAudit } from "@/lib/auth";
 import { getClientIp } from "@/lib/ip";
+import { getAssetSizes } from "@/lib/brand-assets";
 import { getAssetInfos, getSiteSettings, saveSiteSettings } from "@/lib/site-settings";
 
 /** GET: general settings + which images are uploaded (master only). */
@@ -10,8 +11,8 @@ export async function GET() {
   if (!session?.user.isMaster) {
     return NextResponse.json({ error: "Zugriff verweigert" }, { status: 403 });
   }
-  const [site, assets] = await Promise.all([getSiteSettings(), getAssetInfos()]);
-  return NextResponse.json({ site, assets });
+  const [site, assets, sizes] = await Promise.all([getSiteSettings(), getAssetInfos(), getAssetSizes()]);
+  return NextResponse.json({ site, assets, sizes });
 }
 
 /** PUT: name, tagline, footer links, mail header color, time zone (master only). */

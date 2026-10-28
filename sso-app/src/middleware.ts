@@ -10,6 +10,7 @@ const PUBLIC_PATHS = [
   "/api/auth/passkey/authenticate",
   "/api/auth/passkey/authenticate/options",
   "/api/auth/email-code/send",
+  "/api/auth/device", // waiting side of "sign in on another device" / guest access
   "/api/avatar/",
   "/api/branding",
   // OIDC endpoints (must handle auth internally)

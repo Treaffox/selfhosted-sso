@@ -22,12 +22,13 @@ async function handleUserInfo(request: NextRequest) {
     );
   }
 
-  const { user, scopes, app, permission } = tokenData;
+  const { user, scopes, app, permission, guest } = tokenData;
   await logAudit("OIDC_USERINFO", { scopes }, user.id, undefined, { appId: app.id, appName: app.name, useSession: false });
   const claims: Record<string, unknown> = {
     sub: user.id,
     permission,
   };
+  if (guest) claims.guest = true;
 
   if (scopes.includes("profile")) {
     claims.preferred_username = user.username;

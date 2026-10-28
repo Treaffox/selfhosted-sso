@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { destroySession } from "@/lib/session";
+import { clearGuestCookie, destroySession, getGuestTokenFromRequest } from "@/lib/session";
+import { endGuestAccess } from "@/lib/guest-access";
 import { logAudit } from "@/lib/audit";
 import { getPublicBaseUrl } from "@/lib/avatar";
 
@@ -8,14 +9,14 @@ function getBaseUrl(request: NextRequest): string {
   return getPublicBaseUrl() || request.url;
 }
 
-export async function POST(request: NextRequest) {
+async function logout(request: NextRequest) {
   await logAudit("LOGOUT"); // before destroying: the actor is resolved from the session cookie
   await destroySession();
+  // A guest signing out ends the guest access of this browser as well
+  await endGuestAccess(getGuestTokenFromRequest(request));
+  await clearGuestCookie();
   return NextResponse.redirect(new URL("/auth/login", getBaseUrl(request)));
 }
 
-export async function GET(request: NextRequest) {
-  await logAudit("LOGOUT"); // before destroying: the actor is resolved from the session cookie
-  await destroySession();
-  return NextResponse.redirect(new URL("/auth/login", getBaseUrl(request)));
-}
+export const POST = logout;
+export const GET = logout;

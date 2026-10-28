@@ -7,6 +7,7 @@ Self-hosted single sign-on server with passkeys, MFA and OpenID Connect. It runs
 ## What's included
 
 - **Sign-in:** username → passkey **or** password → MFA (authenticator app, email code, recovery codes). MFA is mandatory by default and can be switched to "optional" in the admin area.
+- **Sign-in on another device and as a guest:** instead of typing a password, a device shows a QR code and a 6-digit code and the owner approves it on a device that is already signed in. A guest gets time-limited access (1, 8 or 24 hours) to exactly one app, without a session on the SSO. Both are on by default; every user can switch them off in the settings. With a MaxMind account (**System → GeoIP**) the approval also shows an approximate location.
 - **For your apps:** OpenID Connect (authorization code + PKCE, discovery, JWKS, userinfo), a simple app token flow and nginx `auth_request` for apps without login code of their own.
 - **Management in the browser:** users, apps and permissions, an audit log with filters, sessions and trusted devices.
 - **Customizable in the browser (Admin → System):** name, subtitle, logo (light/dark), favicon, footer links, email design, email providers with a fallback provider, optionally Cloudflare for DNS records.
@@ -46,6 +47,7 @@ Enter the same address as `APP_URL` in the `.env`. Important: the proxy must set
 | Email colors and logo | Browser → **System → Appearance** |
 | Email provider, sender, fallback provider, test email | Browser → **System → Email** |
 | MFA mandatory or optional | Browser → **System → Security** |
+| MaxMind account for IP locations (GeoIP) | Browser → **System → GeoIP** |
 | Cloudflare token and zone ID (optional) | Browser → **System → Cloudflare** |
 | Users, apps, permissions, redirect URIs | Browser → **Users** / **Apps** |
 | Language of the interface and emails | each user in **Settings → Language** |
@@ -62,6 +64,8 @@ Without email delivery no verification codes or welcome emails arrive. Available
 - **Via API:** Brevo, Resend, SendGrid, Mailgun, Postmark, Mailtrap (Email Sending)
 
 Each provider shows its fields with help text and a link to where you create the credentials. You can also set a **fallback provider** that takes over if the main provider fails. **Send test email** checks each provider individually and shows the real error message. Credentials are stored encrypted and never shown again; saving requires your password.
+
+Recommended sizes (also shown next to the upload fields, and a live preview beside them shows the tab, header and sign-in page in the light and dark theme): logo about 480 × 120 px (4 : 1, at least 64 px high; shown 24 px high in the header, 32 px high on the sign-in page and 140 px wide in emails), favicon 256 × 256 px square (at least 64 × 64 px, displayed at 16 to 32 px). Unsuitable images (too small, nearly square, JPEG without transparency) get a hint on the page.
 
 Logo uploads: PNG, SVG, WebP, JPEG; for the favicon JPG, WebP, GIF and PNG are converted to a square PNG, SVG and ICO stay unchanged. The logo in emails is loaded as a PNG from `APP_URL` (SVG uploads are converted automatically). The address must therefore be reachable from the internet, otherwise mail clients won't show the image.
 
@@ -123,7 +127,7 @@ New migration after a schema change: `npx prisma migrate dev --name <name>`.
 
 Please don't report vulnerabilities as a public issue; use GitHub → Security → "Report a vulnerability".
 
-On the design: uploaded SVG logos are checked for scripts, event handlers and external references and served with a sandboxing Content-Security-Policy. Changes to email delivery, Cloudflare and the MFA policy require the admin's password again, because whoever controls email delivery can read sign-in and reset codes. All changes end up in the audit log. The country lookup for the language choice uses a local database (`@ip-location-db`, CC0, derived from the regional internet registries' data); no IP is sent to third parties.
+On the design: uploaded SVG logos are checked for scripts, event handlers and external references and served with a sandboxing Content-Security-Policy. Changes to email delivery, Cloudflare and the MFA policy require the admin's password again, because whoever controls email delivery can read sign-in and reset codes. All changes end up in the audit log. The country lookup for the language choice uses a local database (`@ip-location-db`, CC0, derived from the regional internet registries' data); no IP is sent to third parties. The same goes for the optional location of IP addresses (GeoLite2 from MaxMind): MaxMind only receives the download request with your account, the lookups run on your server. The database lives in the volume `sso-geoip` and is not part of this repository (MaxMind's licence does not allow redistribution).
 
 ## License
 

@@ -270,6 +270,22 @@ const templates: Record<string, Template> = {
       (d.settingsUrl ? button(String(d.settingsUrl), t("Sicherheitseinstellungen"), t("Button funktioniert nicht? Öffne diesen Link:")) : ""),
   },
 
+  "guest-access": {
+    preheader: (d, _b, t) => t("Gast-Zugang für {app} freigegeben. Falls du das nicht warst, beende ihn sofort.", { app: String(d.appName) }),
+    body: (d, _b, t) =>
+      heading(t("Gast-Zugang freigegeben")) +
+      paragraph(t("{hello}, du hast einem Gast Zugriff auf eine App gegeben:", { hello: hello(d, t) })) +
+      infoTable([
+        [t("App"), d.appName],
+        [t("Gültig bis"), d.until],
+        [t("Gerät"), d.device],
+        [t("IP-Adresse"), d.ipAddress],
+        ...(d.location ? ([[t("Standort (ca.)"), d.location]] as [string, string][]) : []),
+      ]) +
+      paragraph(t("Der Gast hat nur Zugriff auf diese App, nicht auf dein SSO-Konto. Falls du das nicht warst, beende den Zugang sofort unter Sitzungen."), { muted: true, mt: 16, mb: 0 }) +
+      (d.sessionsUrl ? button(String(d.sessionsUrl), t("Sitzungen öffnen"), t("Button funktioniert nicht? Öffne diesen Link:")) : ""),
+  },
+
   "welcome": {
     preheader: (_d, b, t) => t("Dein {site} Konto wurde erstellt. Melde dich an und ändere dein Passwort.", { site: b.siteName }),
     body: (d, b, t) =>

@@ -4,6 +4,7 @@ import { getAppUrl, getCookieDomain, getRpId, isHttpsDeployment } from "@/lib/co
 import { isCloudflareConfigured } from "@/lib/cloudflare";
 import { getMailSettings, isMailConfigured } from "@/lib/mail/settings";
 import { getAssetInfos, getSiteSettings } from "@/lib/site-settings";
+import { describeGeoipDatabase } from "@/lib/geoip";
 
 /** GET: setup checklist state + the server values that come from .env (master only). */
 export async function GET() {
@@ -11,7 +12,7 @@ export async function GET() {
   if (!session?.user.isMaster) {
     return NextResponse.json({ error: "Zugriff verweigert" }, { status: 403 });
   }
-  const [site, assets, mail, cloudflare] = await Promise.all([getSiteSettings(), getAssetInfos(), getMailSettings(), isCloudflareConfigured()]);
+  const [site, assets, mail, cloudflare, geoip] = await Promise.all([getSiteSettings(), getAssetInfos(), getMailSettings(), isCloudflareConfigured(), describeGeoipDatabase()]);
   const appUrl = getAppUrl();
   const host = new URL(appUrl).hostname;
 
@@ -21,6 +22,7 @@ export async function GET() {
       branding: site.siteName !== "SSO" || !!assets.logo || !!assets.favicon,
       mail: isMailConfigured(mail),
       cloudflare,
+      geoip: geoip.present,
     },
     server: {
       appUrl,

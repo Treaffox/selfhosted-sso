@@ -10,6 +10,7 @@ const TABS = [
   { href: "/admin/settings/appearance", label: N_("Erscheinungsbild") },
   { href: "/admin/settings/security", label: N_("Sicherheit") },
   { href: "/admin/settings/mail", label: N_("E-Mail") },
+  { href: "/admin/settings/geoip", label: "GeoIP" },
   { href: "/admin/settings/cloudflare", label: "Cloudflare" },
 ];
 
