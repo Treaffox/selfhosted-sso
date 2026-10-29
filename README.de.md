@@ -131,4 +131,4 @@ Zum Design: Hochgeladene SVG-Logos werden auf Skripte, Event-Handler und externe
 
 ## Lizenz
 
-[PolyForm Noncommercial License 1.0.0](LICENSE): frei nutzbar, veränderbar und weitergebbar für jeden nichtkommerziellen Zweck (privat, Hobby, Forschung, Bildung, gemeinnützige Organisationen u. Ä.). Kommerzielle Nutzung braucht eine gesonderte Vereinbarung mit dem Autor. Es handelt sich um eine „source-available“-Lizenz, nicht um eine von der OSI anerkannte Open-Source-Lizenz.
+[PolyForm Noncommercial License 1.0.0](LICENSE.md): frei nutzbar, veränderbar und weitergebbar für jeden nichtkommerziellen Zweck (privat, Hobby, Forschung, Bildung, gemeinnützige Organisationen u. Ä.). Unternehmen, die es kommerziell nutzen möchten, können eine kommerzielle Lizenz unter contact@trfx.de anfragen. Es handelt sich um eine „source-available“-Lizenz, nicht um eine von der OSI anerkannte Open-Source-Lizenz.

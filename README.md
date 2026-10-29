@@ -131,4 +131,4 @@ On the design: uploaded SVG logos are checked for scripts, event handlers and ex
 
 ## License
 
-[PolyForm Noncommercial License 1.0.0](LICENSE): free to use, modify and share for any noncommercial purpose (private use, hobby projects, research, education, charities and similar). Commercial use needs a separate agreement with the author. Note that this is a source-available license, not an OSI-approved open-source license.
+[PolyForm Noncommercial License 1.0.0](LICENSE.md): free to use, modify and share for any noncommercial purpose (private use, hobby projects, research, education, charities and similar). Companies that want to use it commercially can request a commercial license at contact@trfx.de. Note that this is a source-available license, not an OSI-approved open-source license.
