@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { validateRegisteredRedirectUri } from "./safe-redirect";
+import { normalizeEmailCode } from "./crypto";
 
 export const usernameSchema = z
   .string()
@@ -13,7 +14,9 @@ export const usernameSchema = z
 export const passwordSchema = z
   .string()
   .min(8, "Passwort muss mind. 8 Zeichen haben")
-  .max(128, "Passwort darf max. 128 Zeichen haben");
+  .max(128, "Passwort darf max. 128 Zeichen haben")
+  // bcrypt only looks at the first 72 bytes: longer passwords would silently lose their tail
+  .refine((p) => new TextEncoder().encode(p).length <= 72, "Passwort darf max. 72 Bytes haben (Umlaute und Emojis zählen mehrfach)");
 
 export const emailSchema = z.string().email("Ungültige E-Mail-Adresse");
 
@@ -22,10 +25,12 @@ export const totpCodeSchema = z
   .length(6, "Code muss 6 Ziffern haben")
   .regex(/^\d{6}$/, "Code muss 6 Ziffern haben");
 
+/** E-mail code: 8 letters/digits; case, spaces and dashes are ignored (parsed value is the canonical form). */
 export const emailCodeSchema = z
   .string()
-  .length(6, "Code muss 6 Ziffern haben")
-  .regex(/^\d{6}$/, "Code muss 6 Ziffern haben");
+  .max(32, "Der Code hat 8 Zeichen")
+  .transform(normalizeEmailCode)
+  .refine((c) => /^[A-HJ-NP-Z2-9]{8}$/.test(c), "Der Code hat 8 Zeichen");
 
 export const recoveryCodeSchema = z
   .string()

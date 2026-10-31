@@ -26,6 +26,13 @@ function cookieOptions(maxAgeSeconds: number) {
   };
 }
 
+/** A guest account's session never outlives the account. */
+async function cappedMaxAge(userId: string, maxAgeMs: number): Promise<number> {
+  const account = await db.user.findUnique({ where: { id: userId }, select: { expiresAt: true } });
+  if (!account?.expiresAt) return maxAgeMs;
+  return Math.max(1000, Math.min(maxAgeMs, account.expiresAt.getTime() - Date.now()));
+}
+
 /** Create a new session and set the cookie. */
 export async function createSession(
   userId: string,
@@ -34,7 +41,7 @@ export async function createSession(
   sessionDurationHours?: number | null
 ) {
   const token = generateToken(32);
-  const maxAgeMs = getSessionMaxAge(sessionDurationHours);
+  const maxAgeMs = await cappedMaxAge(userId, getSessionMaxAge(sessionDurationHours));
   const expiresAt = new Date(Date.now() + maxAgeMs);
 
   await db.session.create({
@@ -53,7 +60,9 @@ export async function refreshCurrentSessionMaxAge(hours: number) {
   const token = cookieStore.get(sessionCookieName())?.value;
   if (!token) return;
 
-  const maxAgeMs = getSessionMaxAge(hours);
+  const current = await db.session.findFirst({ where: { token: { in: tokenLookupKeys(token) } }, select: { userId: true } });
+  if (!current) return;
+  const maxAgeMs = await cappedMaxAge(current.userId, getSessionMaxAge(hours));
   const expiresAt = new Date(Date.now() + maxAgeMs);
 
   await db.session.updateMany({ where: { token: { in: tokenLookupKeys(token) } }, data: { expiresAt } });
@@ -65,11 +74,12 @@ export async function refreshCurrentSessionMaxAge(hours: number) {
 async function loadSession(token: string) {
   const session = await db.session.findFirst({
     where: { token: { in: tokenLookupKeys(token) } },
-    include: { user: true },
+    include: { user: { include: { _count: { select: { passkeys: true } } } } },
   });
   if (!session) return null;
 
-  if (session.expiresAt < new Date()) {
+  // A guest account whose time is up has no session any more (the account itself is removed by the sweep)
+  if (session.expiresAt < new Date() || (session.user.expiresAt && session.user.expiresAt.getTime() <= Date.now())) {
     await db.session.delete({ where: { id: session.id } }).catch(() => {});
     return null;
   }
@@ -244,7 +254,35 @@ export async function cleanupExpired() {
     db.trustedDevice.deleteMany({ where: { expiresAt: { lt: now } } }),
     db.authCode.deleteMany({ where: { expiresAt: { lt: now } } }),
     db.emailCode.deleteMany({ where: { expiresAt: { lt: now } } }),
-    db.deviceLoginRequest.deleteMany({ where: { expiresAt: { lt: now } } }),
+    // approved requests may still be picked up for a minute after their expiry (api/auth/device/status)
+    db.deviceLoginRequest.deleteMany({ where: { expiresAt: { lt: new Date(now.getTime() - 5 * 60 * 1000) } } }),
     db.guestGrant.deleteMany({ where: { expiresAt: { lt: now } } }),
   ]);
+
+  await purgeExpiredGuests();
+}
+
+/**
+ * Guest accounts whose time is up are removed together with everything that hangs on them (sessions, tokens, grants).
+ * `username` limits it to one name: creating an account must not fail because of an expired one that only waits for the sweep.
+ */
+export async function purgeExpiredGuests(username?: string) {
+  const now = new Date();
+  const gone = await db.user.findMany({ where: { expiresAt: { lte: now }, isMaster: false, ...(username ? { username } : {}) }, select: { id: true, username: true } });
+  if (gone.length === 0) return;
+  const { logAudit } = await import("./audit"); // audit.ts reads the request context from here: no static import (cycle)
+  for (const u of gone) {
+    await db.user.deleteMany({ where: { id: u.id, expiresAt: { lte: now } } });
+    await logAudit("GUEST_ACCOUNT_EXPIRED", { username: u.username, userId: u.id }, undefined, undefined, { useSession: false });
+  }
+}
+
+// Expired rows are only removed when someone presents them, so unused ones (every username typed on the sign-in page
+// creates a login session) would pile up and keep IP addresses forever. Sweep them hourly, once per process.
+const sweepState = globalThis as { __ssoSweepStarted?: boolean };
+if (!sweepState.__ssoSweepStarted && process.env.NEXT_RUNTIME !== "edge") {
+  sweepState.__ssoSweepStarted = true;
+  const sweep = () => cleanupExpired().catch(() => console.error("[CLEANUP] Aufräumen abgelaufener Einträge fehlgeschlagen"));
+  setTimeout(sweep, 30_000).unref();
+  setInterval(sweep, 60 * 60 * 1000).unref();
 }

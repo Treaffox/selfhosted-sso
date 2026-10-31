@@ -1,3 +1,5 @@
+import { guestAccountForbidden, isGuestAccount } from "@/lib/guest-account";
+import { passkeyRegistrationToken } from "@/lib/pending";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
@@ -10,6 +12,7 @@ export async function POST(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Nicht authentifiziert" }, { status: 401 });
   }
+  if (isGuestAccount(session.user)) return guestAccountForbidden();
 
   try {
     const body = await request.json().catch(() => null);
@@ -21,7 +24,7 @@ export async function POST(request: Request) {
 
     // Get stored challenge
     const challengeSession = await db.loginSession.findUnique({
-      where: { token: `passkey-reg-${session.user.id}` },
+      where: { token: passkeyRegistrationToken(session.user.id) },
     });
 
     if (!challengeSession?.challenge || challengeSession.expiresAt < new Date()) {

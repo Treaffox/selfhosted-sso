@@ -57,6 +57,7 @@ const METHOD_LABELS: Record<string, string> = {
   PASSWORD_TOTP: N_("Passwort + Authenticator"),
   PASSWORD_EMAIL: N_("Passwort + E-Mail-Code"),
   PASSWORD_NO_MFA: N_("Passwort"),
+  PASSWORD_GUEST_ACCOUNT: N_("Passwort"),
   PASSWORD_IP_WHITELIST: N_("Passwort (vertraute IP)"),
   PASSKEY: N_("Passkey"),
   RECOVERY_CODE: N_("Wiederherstellungscode"),
@@ -187,6 +188,8 @@ const EVENTS: Record<string, EventDef> = {
   PROFILE_UPDATED: { category: "PROFILE", text: ({ actor, t }) => t("{actor} hat das Profil aktualisiert", { actor }) },
   AVATAR_UPDATED: { category: "PROFILE", text: ({ actor, t }) => t("{actor} hat das Profilbild aktualisiert", { actor }) },
   AVATAR_DELETED: { category: "PROFILE", text: ({ actor, t }) => t("{actor} hat das Profilbild entfernt", { actor }) },
+  INVITE_ACCEPTED: { category: "SECURITY", text: ({ actor, t }) => t("{actor} hat die Einladung angenommen und ein Passwort gesetzt", { actor }) },
+  SECOND_FACTORS_REMOVED: { category: "SECURITY", text: ({ t }) => t("Passkeys, Authenticator und Wiederherstellungscodes wurden entfernt") },
   PASSWORD_CHANGED: { category: "SECURITY", text: ({ actor, t }) => t("{actor} hat das Passwort geändert", { actor }) },
   DEVICE_LOGIN_SETTINGS_UPDATED: {
     category: "PROFILE",
@@ -238,6 +241,11 @@ const EVENTS: Record<string, EventDef> = {
     category: "ADMIN",
     text: ({ actor, d, t }) => t("{actor} hat einen Nutzer geändert ({fields})", { actor, fields: Array.isArray(d.fields) ? d.fields.join(", ") : t("Felder") }),
     target: (d) => ({ type: "USER", id: str(d.userId) || undefined }),
+  },
+  GUEST_ACCOUNT_EXPIRED: {
+    category: "ADMIN",
+    text: ({ d, t }) => t("Das Gastkonto {username} ist abgelaufen und wurde gelöscht", { username: str(d.username) }),
+    target: (d) => ({ type: "USER", label: str(d.username) || undefined }),
   },
   USER_DELETED: {
     category: "ADMIN",

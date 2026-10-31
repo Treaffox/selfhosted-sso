@@ -24,6 +24,9 @@ export async function PUT(request: Request) {
 
   try {
     const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
+    }
     const denied = await requireReauth(session.user.id, body?.password, "settings-geoip", ip);
     if (denied) return denied;
 
@@ -38,6 +41,7 @@ export async function PUT(request: Request) {
     const download = await downloadGeoipDatabase();
     return NextResponse.json({ success: true, download: download.ok ? { ok: true } : { ok: false, error: download.error } });
   } catch (error) {
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
     console.error("[GEOIP SETTINGS ERROR]", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Fehler" }, { status: 500 });
   }

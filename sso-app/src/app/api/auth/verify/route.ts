@@ -1,3 +1,5 @@
+import { effectivePermission } from "@/lib/guest-account";
+import { needsMfaSetup } from "@/lib/mfa-policy";
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { validateSessionToken, getSessionTokenFromRequest, getGuestTokenFromRequest } from "@/lib/session";
@@ -59,7 +61,7 @@ export async function GET(request: NextRequest) {
 
   // Who is asking: a real SSO session, or a guest whose access is bound to exactly this app.
   // A guest cookie that doesn't fit this app (or ran out) counts as "not signed in", so the visitor can log in normally.
-  let user: { id: string; username: string; email: string | null; avatarUpdatedAt: Date | null; forcePasswordChange: boolean };
+  let user: { id: string; username: string; email: string | null; avatarUpdatedAt: Date | null; forcePasswordChange: boolean; expiresAt?: Date | null };
   let subject: string; // identifies the session/grant for the access log window
   let guestUntil: Date | null = null;
   let app: Awaited<ReturnType<typeof loadApp>> | undefined;
@@ -85,6 +87,20 @@ export async function GET(request: NextRequest) {
       await logAudit(
         "APP_ACCESS_DENIED",
         { reason: N_("Passwortänderung erforderlich"), path: (request.headers.get("x-original-uri") ?? "").split("?")[0].slice(0, 500) || undefined },
+        user.id,
+        getClientIp(request),
+        { outcome: "DENIED", authVia }
+      );
+    }
+    return new NextResponse(null, { status: 403 });
+  }
+
+  // Password-only accounts have to set up a second factor first (guests are bound to a grant the owner approved)
+  if (session && (await needsMfaSetup(session.user))) {
+    if (firstInWindow(`mfa:${user.id}`, DENIED_WINDOW_MS)) {
+      await logAudit(
+        "APP_ACCESS_DENIED",
+        { reason: N_("Zweiter Faktor erforderlich"), path: (request.headers.get("x-original-uri") ?? "").split("?")[0].slice(0, 500) || undefined },
         user.id,
         getClientIp(request),
         { outcome: "DENIED", authVia }
@@ -148,7 +164,7 @@ export async function GET(request: NextRequest) {
     select: { permissionLevel: true },
   });
 
-  const level = permission?.permissionLevel ?? app.defaultPermission;
+  const level = effectivePermission(permission?.permissionLevel, app.defaultPermission, user);
   headers.set("X-Permission", level);
 
   // DENY → 403

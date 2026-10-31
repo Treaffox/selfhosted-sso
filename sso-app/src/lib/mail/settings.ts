@@ -79,7 +79,7 @@ export async function getMailSettingsView(): Promise<MailSettingsView> {
 const HOST_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$|^\[?[0-9a-f:.]+\]?$/i;
 
 const channelInput = z
-  .object({ provider: z.string().max(40), config: z.record(z.string().max(500)).default({}) })
+  .object({ provider: z.string().max(40), config: z.record(z.string(), z.string().max(500)).default({}) })
   .nullable();
 
 const inputSchema = z.object({

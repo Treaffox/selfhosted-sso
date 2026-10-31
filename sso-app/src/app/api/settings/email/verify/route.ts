@@ -3,7 +3,7 @@ import { getSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { verifyEmailCode, logAudit } from "@/lib/auth";
 import { decrypt } from "@/lib/crypto";
-import { totpCodeSchema } from "@/lib/validation";
+import { emailCodeSchema } from "@/lib/validation";
 import { getClientIp } from "@/lib/ip";
 import { rateLimitEmailVerify, resetRateLimit } from "@/lib/rate-limit";
 import { pendingEmailToken } from "@/lib/pending";
@@ -28,9 +28,9 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => null);
-  const parsed = totpCodeSchema.safeParse(body?.code);
+  const parsed = emailCodeSchema.safeParse(body?.code);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Der Code hat 6 Ziffern" }, { status: 400 });
+    return NextResponse.json({ error: "Der Code hat 8 Zeichen" }, { status: 400 });
   }
 
   const token = pendingEmailToken(userId);

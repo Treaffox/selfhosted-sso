@@ -60,10 +60,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ total, limit, offset, rows: localized(rows) });
   } catch (error) {
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
     if (error instanceof FilterError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    console.error("[AUDIT QUERY ERROR]", error);
+    console.error("[AUDIT QUERY ERROR]", error instanceof Error ? error.name : "unbekannter Fehler");
     return NextResponse.json({ error: "Abfrage fehlgeschlagen" }, { status: 500 });
   }
 }

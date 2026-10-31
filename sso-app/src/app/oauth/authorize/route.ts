@@ -1,3 +1,5 @@
+import { effectivePermission } from "@/lib/guest-account";
+import { needsMfaSetup } from "@/lib/mfa-policy";
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
@@ -90,10 +92,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Same rule as everywhere else: a temporary password has to be changed before any app is reachable
+  if (session.user.forcePasswordChange) {
+    await logAudit("APP_ACCESS_DENIED", { protocol: "oidc", reason: N_("Passwortänderung erforderlich"), path: url.pathname }, session.userId, getClientIp(request), { appId: app.id, outcome: "DENIED", authVia: "EXISTING_SESSION" });
+    return NextResponse.redirect(new URL("/settings/security?changePassword=1", getPublicBaseUrl()));
+  }
+
+  // A password-only account (no authenticator, e-mail or passkey) has to set up a second factor first
+  if (await needsMfaSetup(session.user)) {
+    await logAudit("APP_ACCESS_DENIED", { protocol: "oidc", reason: N_("Zweiter Faktor erforderlich"), path: url.pathname }, session.userId, getClientIp(request), { appId: app.id, outcome: "DENIED", authVia: "EXISTING_SESSION" });
+    return NextResponse.redirect(new URL("/settings/security?setupMfa=1", getPublicBaseUrl()));
+  }
+
   const permission = await db.userAppPermission.findUnique({
     where: { userId_appId: { userId: session.userId, appId: app.id } },
   });
-  const permissionLevel = permission?.permissionLevel ?? app.defaultPermission;
+  const permissionLevel = effectivePermission(permission?.permissionLevel, app.defaultPermission, session.user);
   const ip = getClientIp(request);
   if (permissionLevel === "DENY") {
     await logAudit("APP_ACCESS_DENIED", { protocol: "oidc", reason: N_("Berechtigung DENY"), path: url.pathname }, session.userId, ip, { appId: app.id, outcome: "DENIED", authVia: "EXISTING_SESSION" });

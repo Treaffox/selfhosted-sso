@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession, destroyOtherSessions, revokeTrustedDevices } from "@/lib/session";
 import { hashPassword, logAudit } from "@/lib/auth";
+import { removeSecondFactors } from "@/lib/invite";
 import { passwordSchema } from "@/lib/validation";
 import { getClientIp } from "@/lib/ip";
 import { requireReauth } from "@/lib/reauth";
@@ -45,6 +46,13 @@ export async function POST(request: Request) {
     await revokeGuestGrants(session.user.id);
 
     await logAudit("PASSWORD_CHANGED", {}, session.user.id, ip);
+
+    // Optional (the UI recommends it): drop passkeys / authenticator / recovery codes as well, in case someone
+    // with access to the account added a second factor of their own
+    if (body?.removeSecondFactors === true) {
+      await removeSecondFactors(session.user.id);
+      await logAudit("SECOND_FACTORS_REMOVED", {}, session.user.id, ip);
+    }
 
     return NextResponse.json({ success: true });
   } catch {

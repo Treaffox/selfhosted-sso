@@ -11,6 +11,8 @@ import { PageTitle } from "@/components/ui/page-title";
 import { toast } from "sonner";
 import { useI18n } from "@/components/i18n-provider";
 import { dateLocale } from "@/lib/i18n/core";
+import { GUEST_ACCOUNT_DEFAULT_MINUTES } from "@/lib/guest-account-duration";
+import { GuestDuration } from "./guest-duration";
 
 interface User {
   id: string;
@@ -18,6 +20,7 @@ interface User {
   email: string | null;
   isMaster: boolean;
   forcePasswordChange: boolean;
+  expiresAt: string | null;
   totpVerified: boolean;
   createdAt: string;
   _count: { passkeys: number; sessions: number };
@@ -35,6 +38,9 @@ export default function UsersPage() {
   const [newPassword, setNewPassword] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [creating, setCreating] = useState(false);
+  const [newGuest, setNewGuest] = useState(false);
+  const [newGuestMinutes, setNewGuestMinutes] = useState<number | null>(GUEST_ACCOUNT_DEFAULT_MINUTES);
+  const [invite, setInvite] = useState<{ url: string; username: string; mailed: boolean; until: string } | null>(null);
 
   const fetchUsers = async () => {
     const res = await fetch("/api/admin/users");
@@ -64,8 +70,9 @@ export default function UsersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: newUsername,
-          password: newPassword,
+          password: newPassword || undefined,
           email: newEmail || undefined,
+          guestMinutes: newGuest ? newGuestMinutes : undefined,
         }),
       });
       const data = await res.json();
@@ -74,6 +81,8 @@ export default function UsersPage() {
         return;
       }
       setShowCreate(false);
+      setInvite({ url: data.inviteUrl, username: newUsername, mailed: !!data.mailed, until: new Date(data.inviteExpiresAt).toLocaleString(dateLocale(locale), { dateStyle: "medium", timeStyle: "short" }) });
+      setNewGuest(false);
       setNewUsername("");
       setNewPassword("");
       setNewEmail("");
@@ -136,6 +145,9 @@ export default function UsersPage() {
                         <span>{user.username}</span>
                         {user.isMaster && <Badge variant="warning">{t("Master")}</Badge>}
                         {user.forcePasswordChange && <Badge variant="danger">{t("PW ändern")}</Badge>}
+                        {user.expiresAt && (new Date(user.expiresAt).getTime() <= Date.now()
+                          ? <Badge variant="danger">{t("Abgelaufen")}</Badge>
+                          : <Badge variant="warning">{t("Gast bis {date}", { date: new Date(user.expiresAt).toLocaleString(dateLocale(locale), { dateStyle: "medium", timeStyle: "short" }) })}</Badge>)}
                       </div>
                     </td>
                     <td className="px-4 sm:px-5 py-3 text-muted font-mono text-xs hidden lg:table-cell">{user.id}</td>
@@ -198,11 +210,11 @@ export default function UsersPage() {
             autoFocus
           />
           <Input
-            label={t("Passwort (Initialpasswort)")}
+            label={t("Passwort (optional)")}
             type="text"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            placeholder={t("Sicheres Initialpasswort")}
+            placeholder={t("Leer lassen: die Person wählt es über den Einladungslink")}
           />
           <Input
             label={t("E-Mail (optional)")}
@@ -211,10 +223,42 @@ export default function UsersPage() {
             onChange={(e) => setNewEmail(e.target.value)}
             placeholder={t("nutzer@example.com")}
           />
-          <Button onClick={handleCreate} loading={creating} className="w-full">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" checked={newGuest} onChange={(e) => setNewGuest(e.target.checked)} className="w-4 h-4 mt-0.5 accent-foreground" />
+            <span className="text-xs text-muted">
+              {t("Gastkonto: nur Passwort, nie MFA, kein Zugriff auf Apps außer den freigegebenen, wird nach Ablauf gelöscht")}
+            </span>
+          </label>
+          {newGuest && (
+            <div>
+              <label className="block text-xs text-muted uppercase tracking-wider mb-1.5">{t("Gültig für")}</label>
+              <GuestDuration onChange={setNewGuestMinutes} />
+            </div>
+          )}
+          <Button onClick={handleCreate} loading={creating} disabled={newGuest && newGuestMinutes === null} className="w-full">
             {t("Nutzer erstellen")}
           </Button>
         </div>
+      </Modal>
+
+      {/* Invitation link */}
+      <Modal open={!!invite} onClose={() => setInvite(null)} title={t("Einladungslink")}>
+        {invite && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted">
+              {invite.mailed
+                ? t("Der Link wurde per E-Mail an {username} gesendet. Er ist bis {date} gültig und funktioniert nur einmal.", { username: invite.username, date: invite.until })
+                : t("Gib {username} diesen Link weiter. Er ist bis {date} gültig und funktioniert nur einmal. Per E-Mail wurde nichts gesendet.", { username: invite.username, date: invite.until })}
+            </p>
+            <Input label={t("Link")} readOnly value={invite.url} onFocus={(e) => e.currentTarget.select()} />
+            <Button
+              className="w-full"
+              onClick={() => navigator.clipboard.writeText(invite.url).then(() => toast.success(t("Kopiert"))).catch(() => {})}
+            >
+              {t("Link kopieren")}
+            </Button>
+          </div>
+        )}
       </Modal>
     </div>
   );

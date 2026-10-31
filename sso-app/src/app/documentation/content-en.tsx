@@ -286,6 +286,9 @@ const user = await res.json();
               If a user has no assignment of their own, the application's default level applies (configurable in the administration, preset to <InlineCode>DENY</InlineCode>).
             </p>
             <p>
+              Temporary <strong>guest accounts</strong> are the exception: they only have a password (never MFA), the default level does not apply to them – without an explicit assignment they get <InlineCode>DENY</InlineCode>. The admin sets the lifetime freely (quick choices from one hour to 90 days, otherwise any number up to ten years). Tokens and sessions end with the account at the latest, and the account is deleted when it expires.
+            </p>
+            <p>
               Fine-grained, app-specific levels (e.g. <InlineCode>ADMIN</InlineCode>, <InlineCode>VIEWER</InlineCode>) are delivered by the SSO in the <InlineCode>permission</InlineCode> claim – in the <InlineCode>id_token</InlineCode> and in the{" "}
               <InlineCode>/oauth/userinfo</InlineCode> response, regardless of the requested scope. The id_token contains the level at the time of the token exchange, <InlineCode>/oauth/userinfo</InlineCode> the current one. If access is revoked (<InlineCode>DENY</InlineCode>),
               the SSO rejects the exchange and further userinfo calls.
@@ -423,7 +426,7 @@ location @sso_login {
             <p>
               The endpoint <InlineCode>/api/auth/verify</InlineCode> answers with <InlineCode>200</InlineCode> and the headers <InlineCode>X-User-Id</InlineCode>, <InlineCode>X-Username</InlineCode>, <InlineCode>X-Permission</InlineCode>,{" "}
               <InlineCode>X-Email</InlineCode> (only if an address is on file) and <InlineCode>X-Avatar-Url</InlineCode> (only with a profile picture). For a guest access (see Guest access) <InlineCode>X-Guest: 1</InlineCode> and <InlineCode>X-Guest-Expires</InlineCode> are added; the <InlineCode>sso_guest</InlineCode> cookie only applies to the application it was issued for. Without a valid session you get <InlineCode>401</InlineCode>; with <InlineCode>DENY</InlineCode>, a disabled or unknown application and
-              for accounts that still have to change a temporary password, <InlineCode>403</InlineCode>. If <InlineCode>app_id</InlineCode> (or the header <InlineCode>X-App-Token</InlineCode>) is missing, the endpoint answers with <InlineCode>400</InlineCode> instead of letting just any signed-in user through –
+              for accounts that still have to change a temporary password or set up a second factor, <InlineCode>403</InlineCode>. If <InlineCode>app_id</InlineCode> (or the header <InlineCode>X-App-Token</InlineCode>) is missing, the endpoint answers with <InlineCode>400</InlineCode> instead of letting just any signed-in user through –
               so a proxy configuration without an app identifier stands out immediately.
             </p>
             <p>

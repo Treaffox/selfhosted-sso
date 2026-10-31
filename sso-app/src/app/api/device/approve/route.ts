@@ -62,10 +62,11 @@ export async function POST(request: Request) {
 
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { id: true, username: true, email: true, isMaster: true, forcePasswordChange: true, guestLoginEnabled: true, deviceLoginEnabled: true, locale: true },
+    select: { id: true, username: true, email: true, isMaster: true, forcePasswordChange: true, guestLoginEnabled: true, deviceLoginEnabled: true, locale: true, expiresAt: true },
   });
   if (!user) return err(401, "Nicht authentifiziert");
   if (user.forcePasswordChange) return err(403, "Ändere zuerst dein Passwort");
+  if (user.expiresAt) return err(403, "Für Gastkonten nicht verfügbar");
 
   let durationHours: number | undefined;
 

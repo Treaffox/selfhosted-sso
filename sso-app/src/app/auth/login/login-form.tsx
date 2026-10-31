@@ -497,13 +497,15 @@ function LoginPageContent({ returnTo, brand }: { returnTo: string | null; brand:
                     onChange={(e) => {
                       if (mfaMethod === "recovery") {
                         setMfaCode(e.target.value);
+                      } else if (mfaMethod === "email") {
+                        setMfaCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 9));
                       } else {
                         setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6));
                       }
                     }}
-                    placeholder={mfaMethod === "recovery" ? "XXXX-XXXX-XXXX" : "000000"}
-                    inputMode={mfaMethod === "recovery" ? "text" : "numeric"}
-                    maxLength={mfaMethod === "recovery" ? 50 : 6}
+                    placeholder={mfaMethod === "recovery" ? "XXXX-XXXX-XXXX" : mfaMethod === "email" ? "ABCD-EFGH" : "000000"}
+                    inputMode={mfaMethod === "recovery" || mfaMethod === "email" ? "text" : "numeric"}
+                    maxLength={mfaMethod === "recovery" ? 50 : mfaMethod === "email" ? 9 : 6}
                     autoComplete={mfaMethod === "recovery" ? "off" : "one-time-code"}
                     autoFocus
                   />

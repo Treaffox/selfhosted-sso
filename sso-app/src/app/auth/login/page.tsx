@@ -1,3 +1,5 @@
+import { effectivePermission } from "@/lib/guest-account";
+import { needsMfaSetup } from "@/lib/mfa-policy";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
@@ -42,6 +44,17 @@ export default async function LoginPage({
     if (appId) {
       const app = await db.app.findUnique({ where: { id: appId } });
 
+      if (app && app.isActive && session.user.forcePasswordChange) {
+        // A temporary password has to be changed before any app is reachable (same rule as everywhere else)
+        await logAudit("APP_ACCESS_DENIED", { protocol: "app-token", reason: N_("Passwortänderung erforderlich"), path: "/auth/login" }, session.userId, undefined, { appId: app.id, outcome: "DENIED", authVia: "EXISTING_SESSION" });
+        redirect("/settings/security?changePassword=1");
+      }
+
+      if (app && app.isActive && (await needsMfaSetup(session.user))) {
+        await logAudit("APP_ACCESS_DENIED", { protocol: "app-token", reason: N_("Zweiter Faktor erforderlich"), path: "/auth/login" }, session.userId, undefined, { appId: app.id, outcome: "DENIED", authVia: "EXISTING_SESSION" });
+        redirect("/settings/security?setupMfa=1");
+      }
+
       if (app && app.isActive) {
         const allowedUris: string[] = JSON.parse(app.redirectUris);
         let resolvedRedirectUri: string | undefined = redirectUri;
@@ -56,7 +69,7 @@ export default async function LoginPage({
           const permission = await db.userAppPermission.findUnique({
             where: { userId_appId: { userId: session.userId, appId: app.id } },
           });
-          const permissionLevel = permission?.permissionLevel ?? app.defaultPermission;
+          const permissionLevel = effectivePermission(permission?.permissionLevel, app.defaultPermission, session.user);
 
           if (permissionLevel === "DENY") {
             await logAudit("APP_ACCESS_DENIED", { protocol: "app-token", reason: N_("Berechtigung DENY"), path: "/auth/login" }, session.userId, undefined, { appId: app.id, outcome: "DENIED", authVia: "EXISTING_SESSION" });

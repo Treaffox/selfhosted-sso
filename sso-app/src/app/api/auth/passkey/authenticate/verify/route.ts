@@ -9,6 +9,9 @@ import {
 import { getClientIp } from "@/lib/ip";
 import { rateLimitLogin } from "@/lib/rate-limit";
 import { completeLogin, guardCredentialAttempt } from "@/lib/login-flow";
+import { N_ } from "@/lib/i18n/core";
+
+const PASSKEY_FAILED = N_("Passkey-Verifizierung fehlgeschlagen");
 
 /**
  * Verify passkey authentication response.
@@ -37,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     const loginSession = await getLoginSession(loginToken);
-    if (!loginSession?.userId || !loginSession.challenge) {
+    if (!loginSession?.challenge) {
       return NextResponse.json({ error: "Ungültige Sitzung" }, { status: 400 });
     }
 
@@ -50,7 +53,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Ungültige Sitzung" }, { status: 400 });
     }
 
-    const blocked = await guardCredentialAttempt(loginSession.userId, ip, userAgent);
+    // Session of an unknown username: fail exactly like a wrong passkey
+    if (!loginSession.userId) {
+      return NextResponse.json({ error: PASSKEY_FAILED }, { status: 401 });
+    }
+
+    const blocked = await guardCredentialAttempt(loginSession.userId, ip, userAgent, PASSKEY_FAILED);
     if (blocked) return blocked;
 
     const user = await db.user.findUnique({
@@ -74,7 +82,7 @@ export async function POST(request: NextRequest) {
         "PASSKEY",
         result.reason === "wrong_owner" ? "passkey_wrong_owner" : "passkey_verification_failed"
       );
-      return NextResponse.json({ error: "Passkey-Verifizierung fehlgeschlagen" }, { status: 401 });
+      return NextResponse.json({ error: PASSKEY_FAILED }, { status: 401 });
     }
 
     return await completeLogin(loginSession, user, ip, userAgent, "PASSKEY");

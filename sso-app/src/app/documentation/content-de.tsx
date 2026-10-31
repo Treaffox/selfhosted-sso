@@ -411,6 +411,14 @@ const user = await res.json();
                   <InlineCode>DENY</InlineCode>).
                 </p>
                 <p>
+                  Ausnahme sind befristete <strong>Gastkonten</strong>: Sie haben nur ein Passwort
+                  (nie MFA), das Standard-Level gilt für sie nicht – ohne ausdrückliche Zuweisung
+                  bekommen sie <InlineCode>DENY</InlineCode>. Die Gültigkeitsdauer legt der Admin
+                  frei fest (Schnellauswahl von einer Stunde bis 90 Tage, sonst jede beliebige Zahl
+                  bis zehn Jahre). Tokens und Sitzungen enden spätestens mit dem Konto, das nach
+                  Ablauf gelöscht wird.
+                </p>
+                <p>
                   Feingranulare, app-spezifische Stufen (z. B. <InlineCode>ADMIN</InlineCode>,{" "}
                   <InlineCode>VIEWER</InlineCode>) liefert der SSO im Claim{" "}
                   <InlineCode>permission</InlineCode> – im <InlineCode>id_token</InlineCode> und
@@ -564,7 +572,7 @@ location @sso_login {
                   dazu; das Cookie <InlineCode>sso_guest</InlineCode> gilt nur für die
                   Anwendung, für die es ausgestellt wurde. Ohne gültige Session kommt <InlineCode>401</InlineCode>; bei{" "}
                   <InlineCode>DENY</InlineCode>, deaktivierter oder unbekannter Anwendung sowie bei
-                  Konten, die noch ein temporäres Passwort ändern müssen, <InlineCode>403</InlineCode>.
+                  Konten, die noch ein temporäres Passwort ändern oder einen zweiten Faktor einrichten müssen, <InlineCode>403</InlineCode>.
                   Fehlt <InlineCode>app_id</InlineCode> (bzw. der Header{" "}
                   <InlineCode>X-App-Token</InlineCode>), antwortet der Endpunkt mit{" "}
                   <InlineCode>400</InlineCode>, statt irgendeinen angemeldeten Nutzer

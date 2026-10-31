@@ -6,6 +6,7 @@ import { logAudit, createRecoveryCodes, createEmailCode } from "@/lib/auth";
 import { sendEmailChangeCodeEmail } from "@/lib/email";
 import { encrypt } from "@/lib/crypto";
 import { getClientIp } from "@/lib/ip";
+import { guestAccountForbidden, isGuestAccount } from "@/lib/guest-account";
 import { requireReauth } from "@/lib/reauth";
 import { rateLimitEmail } from "@/lib/rate-limit";
 import { pendingEmailToken } from "@/lib/pending";
@@ -34,6 +35,7 @@ export async function GET() {
       locale: true,
       guestLoginEnabled: true,
       deviceLoginEnabled: true,
+      expiresAt: true,
       avatarUpdatedAt: true,
       createdAt: true,
       _count: { select: { passkeys: true, recoveryCodes: true, trustedDevices: true } },
@@ -178,6 +180,7 @@ export async function PATCH(request: Request) {
 
     // ── Neue Wiederherstellungscodes ───────────────────
     if (body.generateRecoveryCodes) {
+      if (isGuestAccount(session.user)) return guestAccountForbidden();
       const reauth = await requireReauth(userId, body.currentPassword, "recovery-codes", ip);
       if (reauth) return reauth;
 

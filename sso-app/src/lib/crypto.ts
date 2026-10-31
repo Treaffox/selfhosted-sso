@@ -50,6 +50,25 @@ export function generateNumericCode(digits = 6): string {
   return num.toString().padStart(digits, "0");
 }
 
+const EMAIL_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 symbols, no 0/O/1/I
+
+/** Code sent by e-mail: 8 characters (letters and digits, ≈ 40 bit). Only a keyed hash of it is stored. */
+export function generateEmailCode(): string {
+  let code = "";
+  for (let i = 0; i < 8; i++) code += EMAIL_CODE_CHARS[crypto.randomInt(0, EMAIL_CODE_CHARS.length)];
+  return code;
+}
+
+/** What the user typed → canonical form (upper case, no spaces or dashes). */
+export function normalizeEmailCode(input: string): string {
+  return input.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+/** Display form for mails: ABCD-EFGH. */
+export function formatEmailCode(code: string): string {
+  return code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+}
+
 /** Generate human-readable recovery codes. */
 export function generateRecoveryCodes(count = 10): string[] {
   const codes: string[] = [];

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/ip";
+import { guestAccountForbidden, isGuestAccount } from "@/lib/guest-account";
 
 /**
  * PATCH: opt out of (or back into) guest access and sign-in on another device.
@@ -12,6 +13,7 @@ export async function PATCH(request: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Nicht authentifiziert" }, { status: 401 });
   const user = session.user;
+  if (isGuestAccount(user)) return guestAccountForbidden();
 
   const body = await request.json().catch(() => null);
   const data: { guestLoginEnabled?: boolean; deviceLoginEnabled?: boolean } = {};

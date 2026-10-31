@@ -5,7 +5,8 @@ import { db } from "./db";
 import { generateToken, sha256 } from "./crypto";
 import { blindIndex } from "./data-crypto";
 import { getPublicBaseUrl } from "./avatar";
-import { checkAccountLock, createAuthCode, getLoginSession, hasRecentLogin } from "./auth";
+import { checkAccountLock, createAuthCode, getLoginSession } from "./auth";
+import { isFamiliarDevice } from "./device-cookie";
 import { createOIDCAuthCode } from "./oidc";
 import { completeLogin, resolveAppContext } from "./login-flow";
 import { checkRateLimit, rateLimitDeviceRequestPerAccount } from "./rate-limit";
@@ -109,15 +110,17 @@ export function codeOf(requestId: string): string {
 async function eligibleUser(userId: string, kind: DeviceKind, ip: string, userAgent: string | undefined) {
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { id: true, isMaster: true, guestLoginEnabled: true, deviceLoginEnabled: true, forcePasswordChange: true },
+    select: { id: true, isMaster: true, guestLoginEnabled: true, deviceLoginEnabled: true, forcePasswordChange: true, expiresAt: true },
   });
   if (!user) return null;
+  // Guest accounts neither get asked nor approve: no guest sign-in, no sign-in on another device
+  if (user.expiresAt) return null;
   if (kind === "GUEST" && (user.isMaster || !user.guestLoginEnabled)) return null;
   if (kind === "DEVICE" && !user.deviceLoginEnabled) return null;
   if (user.forcePasswordChange) return null;
   // The same rule as for a password login: a locked account is refused (unless the owner's familiar device asks)
   const lock = await checkAccountLock(userId);
-  if (lock.locked && !(await hasRecentLogin(userId, ip, userAgent))) return null;
+  if (lock.locked && !(await isFamiliarDevice(userId))) return null;
   return user;
 }
 
@@ -271,7 +274,7 @@ export async function finishDeviceLogin(
 
   // Things may have changed between approval and pick-up (a few seconds, but never trust it blindly)
   const lock = await checkAccountLock(user.id);
-  if (lock.locked && !(await hasRecentLogin(user.id, ip, userAgent))) return fail(423, "Konto gesperrt. Versuche es später erneut.");
+  if (lock.locked && !(await isFamiliarDevice(user.id))) return fail(423, "Konto gesperrt. Versuche es später erneut.");
 
   const loginSession = request.loginSessionId ? await db.loginSession.findUnique({ where: { id: request.loginSessionId } }) : null;
 

@@ -45,6 +45,9 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
+    }
     const { name, redirectUris, permissionLevels, defaultPermission } = body;
 
     // Validate name
@@ -116,7 +119,8 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("[CREATE APP ERROR]", error);
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
+    console.error("[CREATE APP ERROR]", error instanceof Error ? error.name : "unbekannter Fehler");
     return NextResponse.json({ error: "Fehler beim Erstellen" }, { status: 500 });
   }
 }

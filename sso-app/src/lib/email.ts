@@ -3,6 +3,7 @@ import { deliverMail } from "./mail";
 import { getAssetInfos, getSiteSettings, absoluteUrl } from "./site-settings";
 import { getAppUrl } from "./config";
 import { describeDevice } from "./device-info";
+import { formatEmailCode } from "./crypto";
 import { locateIp } from "./geoip";
 import { N_, dateLocale, isLocale, makeT, type Locale, type TFunction } from "./i18n/core";
 import { getLocale, messagesFor } from "./i18n/server";
@@ -29,6 +30,7 @@ const METHOD_LABELS: Record<string, string> = {
   PASSWORD_TOTP: N_("Passwort + Authenticator-App"),
   PASSWORD_EMAIL: N_("Passwort + E-Mail-Code"),
   PASSWORD_IP_WHITELIST: N_("Passwort (vertraute IP)"),
+  PASSWORD_GUEST_ACCOUNT: N_("Passwort"),
   PASSWORD_TRUSTED_DEVICE: N_("Passwort (vertrauenswürdiges Gerät)"),
   RECOVERY_CODE: N_("Wiederherstellungscode"),
 };
@@ -44,7 +46,8 @@ async function mailI18n(recipientLocale?: string | null): Promise<{ t: TFunction
 
 // ─── Email Senders ────────────────────────────────────
 
-export async function sendVerificationCodeEmail(to: string, username: string, code: string, recipientLocale?: string | null): Promise<boolean> {
+export async function sendVerificationCodeEmail(to: string, username: string, rawCode: string, recipientLocale?: string | null): Promise<boolean> {
+  const code = formatEmailCode(rawCode);
   const [brand, { t, locale }] = await Promise.all([getMailBrand(), mailI18n(recipientLocale)]);
   return deliverMail({
     to,
@@ -54,7 +57,8 @@ export async function sendVerificationCodeEmail(to: string, username: string, co
   });
 }
 
-export async function sendEmailChangeCodeEmail(to: string, username: string, code: string, recipientLocale?: string | null): Promise<boolean> {
+export async function sendEmailChangeCodeEmail(to: string, username: string, rawCode: string, recipientLocale?: string | null): Promise<boolean> {
+  const code = formatEmailCode(rawCode);
   const [brand, { t, locale }] = await Promise.all([getMailBrand(), mailI18n(recipientLocale)]);
   return deliverMail({
     to,
@@ -147,18 +151,37 @@ export async function sendGuestAccessEmail(
   });
 }
 
-export async function sendWelcomeEmail(to: string, username: string, initialPassword: string, recipientLocale?: string | null): Promise<boolean> {
-  const [brand, { t, locale }] = await Promise.all([getMailBrand(), mailI18n(recipientLocale)]);
-  const ssoUrl = getAppUrl();
+export async function sendWelcomeEmail(
+  to: string,
+  username: string,
+  inviteUrl: string,
+  inviteExpires: Date,
+  accountUntil: Date | null,
+  recipientLocale?: string | null
+): Promise<boolean> {
+  const [brand, site, { t, locale }] = await Promise.all([getMailBrand(), getSiteSettings(), mailI18n(recipientLocale)]);
+  const fmt = (d: Date) =>
+    d.toLocaleString(dateLocale(locale), { timeZone: site.timeZone, day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+  const inviteUntil = fmt(inviteExpires);
+  const guestUntil = accountUntil ? fmt(accountUntil) : null;
   return deliverMail({
     to,
     subject: t("Willkommen bei {site}", { site: brand.siteName }),
-    html: renderEmailTemplate("welcome", { username, initialPassword, ssoUrl }, brand, t, locale),
-    text: t("Willkommen bei {site}, {username}!\n\nDein Konto wurde erstellt.\nBenutzername: {username}\nInitialpasswort: {password}\n\nMelde dich hier an: {url}\nBitte ändere dein Passwort nach der ersten Anmeldung und lösche diese E-Mail anschließend.", { site: brand.siteName, username, password: initialPassword, url: ssoUrl }),
+    html: renderEmailTemplate("welcome", { username, inviteUrl, inviteUntil, guestUntil }, brand, t, locale),
+    text: [
+      t("Willkommen bei {site}, {username}!", { site: brand.siteName, username }),
+      "",
+      t("Dein SSO-Konto wurde erstellt. Lege hier dein Passwort fest:"),
+      inviteUrl,
+      "",
+      t("Der Link ist bis {until} gültig und funktioniert nur einmal. Teile ihn mit niemandem.", { until: inviteUntil }),
+      ...(guestUntil ? ["", t("Dein Gastzugang gilt bis {until}. Danach wird das Konto gelöscht.", { until: guestUntil })] : []),
+    ].join("\n"),
   });
 }
 
-export async function sendPasswordResetEmail(to: string, username: string, code: string, recipientLocale?: string | null): Promise<boolean> {
+export async function sendPasswordResetEmail(to: string, username: string, rawCode: string, recipientLocale?: string | null): Promise<boolean> {
+  const code = formatEmailCode(rawCode);
   const [brand, { t, locale }] = await Promise.all([getMailBrand(), mailI18n(recipientLocale)]);
   return deliverMail({
     to,

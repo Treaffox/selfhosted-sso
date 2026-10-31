@@ -59,6 +59,9 @@ export async function PATCH(
 
   try {
     const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
+    }
     const updates: Record<string, unknown> = {};
 
     if (body.name !== undefined) {
@@ -195,7 +198,8 @@ export async function PATCH(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("[UPDATE APP ERROR]", error);
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
+    console.error("[UPDATE APP ERROR]", error instanceof Error ? error.name : "unbekannter Fehler");
     return NextResponse.json({ error: "Fehler" }, { status: 500 });
   }
 }

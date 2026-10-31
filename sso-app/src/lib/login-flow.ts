@@ -15,6 +15,8 @@ import { sendLoginNotificationEmail } from "./email";
 import { getSecuritySettings } from "./security-settings";
 import { isAllowedRedirectUri } from "./safe-redirect";
 import { N_ } from "./i18n/core";
+import { effectivePermission, isExpired } from "./guest-account";
+import { deviceHash, ensureDeviceId, isFamiliarDevice } from "./device-cookie";
 
 // Valid bcrypt hash of a random string: unknown users still cost one bcrypt comparison, so response time
 // doesn't reveal whether a username exists.
@@ -29,8 +31,8 @@ const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 /**
  * Gate in front of every credential check (password, MFA code, passkey).
  *
- *  - A locked account is refused – unless the request comes from an IP + browser the user successfully logged in
- *    from recently. That way someone else typing wrong passwords can't lock the real owner out of their own login.
+ *  - A locked account is refused – unless the request comes from a browser that carries the device cookie of a
+ *    recent successful login (lib/device-cookie.ts; IP + user agent alone are not secret). That way someone else typing wrong passwords can't lock the real owner out of their own login.
  *  - Attempts are counted before the check so parallel requests can't exceed the budget: one shared budget per
  *    account for unfamiliar IPs, one per account+IP for familiar ones.
  *
@@ -39,12 +41,16 @@ const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 export async function guardCredentialAttempt(
   userId: string,
   ip: string,
-  userAgent: string | undefined
+  userAgent: string | undefined,
+  conceal?: string
 ): Promise<NextResponse | null> {
   const lock = await checkAccountLock(userId);
-  const familiar = await hasRecentLogin(userId, ip, userAgent);
+  const familiar = await isFamiliarDevice(userId);
 
+  // `conceal`: steps that run before the password/passkey is proven answer a lock or an exhausted budget with the
+  // same 401 as a wrong credential, otherwise "locked" would tell an attacker that the username exists
   if (lock.locked && !familiar) {
+    if (conceal) return NextResponse.json({ error: conceal }, { status: 401 });
     return NextResponse.json(
       { error: "Konto gesperrt. Versuche es später erneut.", lockedUntil: lock.until },
       { status: 423 }
@@ -59,10 +65,14 @@ export async function guardCredentialAttempt(
   if (!rl.allowed) {
     const retryAfter = Math.ceil((rl.resetAt - Date.now()) / 1000);
     await logAudit("RATE_LIMITED", { scope: "credentials", retryAfterSec: retryAfter }, userId, ip, { outcome: "DENIED", useSession: false });
+    if (conceal) return NextResponse.json({ error: conceal }, { status: 401 });
     return NextResponse.json({ error: "Zu viele Versuche. Bitte warte.", retryAfter }, { status: 429 });
   }
   return null;
 }
+
+/** Same text for an unknown user, a wrong password, a locked account and an exhausted attempt budget. */
+export const GENERIC_LOGIN_ERROR = N_("Benutzername oder Passwort falsch, oder das Konto ist vorübergehend gesperrt");
 
 export function clearCredentialAttempts(userId: string, ip: string): void {
   resetLoginAttempts(userId);
@@ -133,13 +143,20 @@ export async function completeLogin(
   method: string,
   trustDevice?: boolean
 ): Promise<NextResponse> {
+  // Guest account past its date: same answer as a wrong password (the sweep removes the account shortly)
+  const account = await db.user.findUnique({ where: { id: user.id }, select: { expiresAt: true } });
+  if (account && isExpired(account)) {
+    return NextResponse.json({ error: GENERIC_LOGIN_ERROR }, { status: 401 });
+  }
+
   await resetFailedAttempts(user.id);
   clearCredentialAttempts(user.id, ip);
 
   // Decide on the "new login" mail BEFORE logging (so we don't find our own record)
   const shouldNotify = !!user.email && !(await hasRecentLogin(user.id, ip, userAgent));
 
-  await logLogin(user.id, ip, userAgent, true, method);
+  const deviceId = await ensureDeviceId();
+  await logLogin(user.id, ip, userAgent, true, method, undefined, deviceHash(deviceId));
   await createSession(user.id, ip, userAgent, user.sessionDurationHours);
 
   if (trustDevice) {
@@ -183,7 +200,7 @@ export async function completeLogin(
     where: { userId_appId: { userId: user.id, appId: ctx.appId } },
   });
   const app = await db.app.findUnique({ where: { id: ctx.appId }, select: { name: true, defaultPermission: true } });
-  const permissionLevel = permission?.permissionLevel ?? app?.defaultPermission ?? "DENY";
+  const permissionLevel = app ? effectivePermission(permission?.permissionLevel, app.defaultPermission, account ?? {}) : "DENY";
 
   // Same rule as /oauth/authorize and the existing-session login: DENY never gets a code.
   if (permissionLevel === "DENY") {

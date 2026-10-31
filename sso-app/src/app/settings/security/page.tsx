@@ -30,6 +30,7 @@ export default function SecurityPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [removeFactors, setRemoveFactors] = useState(true);
 
   // TOTP
   const [totpSetup, setTotpSetup] = useState<{ qrDataUrl: string; uri: string; secret: string } | null>(null);
@@ -61,6 +62,9 @@ export default function SecurityPage() {
 
   useEffect(() => { fetchProfile(); }, []);
 
+  const isGuest = !!profile?.expiresAt;
+  const hasSecondFactor = !!profile?.totpVerified || (profile?.passkeys?.length ?? 0) > 0;
+
   // --- Password Change ---
   const changePassword = async () => {
     if (newPassword !== confirmPassword) {
@@ -71,11 +75,14 @@ export default function SecurityPage() {
     const res = await fetch("/api/settings/password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ currentPassword, newPassword }),
+      body: JSON.stringify({ currentPassword, newPassword, removeSecondFactors: hasSecondFactor && removeFactors }),
     });
     const data = await res.json();
     res.ok ? toast.success(t("Passwort geändert. Alle anderen Sitzungen wurden beendet.")) : toast.error(te(data.error));
-    if (res.ok) { setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); }
+    if (res.ok) {
+      setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
+      if (hasSecondFactor && removeFactors) fetchProfile();
+    }
     setPasswordSaving(false);
   };
 
@@ -268,10 +275,25 @@ export default function SecurityPage() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
+          {hasSecondFactor && (
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={removeFactors}
+                onChange={(e) => setRemoveFactors(e.target.checked)}
+                className="w-4 h-4 mt-0.5 accent-foreground"
+              />
+              <span className="text-xs text-muted">
+                {t("Passkeys, Authenticator und Wiederherstellungscodes entfernen (empfohlen, falls jemand anderes Zugriff auf dein Konto hatte). Du richtest sie danach neu ein.")}
+              </span>
+            </label>
+          )}
           <Button onClick={changePassword} loading={passwordSaving}>{t("Passwort ändern")}</Button>
         </div>
       </Card>
 
+      {!isGuest && (
+      <>
       {/* TOTP */}
       <Card>
         <div className="flex items-center justify-between">
@@ -370,6 +392,9 @@ export default function SecurityPage() {
         </div>
       </Card>
 
+      </>
+      )}
+
       {/* Session Duration */}
       <Card>
         <CardTitle>{t("Sitzungsdauer")}</CardTitle>
@@ -399,6 +424,8 @@ export default function SecurityPage() {
         </p>
       </Card>
 
+      {!isGuest && (
+      <>
       {/* Approval-based sign-in */}
       <Card>
         <CardTitle>{t("Anmeldung mit Freigabe")}</CardTitle>
@@ -487,6 +514,8 @@ export default function SecurityPage() {
           </Button>
         </Modal>
       </Card>
+      </>
+      )}
     </div>
   );
 }

@@ -42,6 +42,9 @@ export async function PUT(request: Request) {
 
   try {
     const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
+    }
     const denied = await requireReauth(session.user.id, body?.password, "settings-mail", ip);
     if (denied) return denied;
 
@@ -51,6 +54,7 @@ export async function PUT(request: Request) {
     await logAudit("SETTINGS_MAIL_UPDATED", { primary: body.primary?.provider ?? null, fallback: body.fallback?.provider ?? null, changed: result.changed }, session.user.id, ip);
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
     console.error("[MAIL SETTINGS ERROR]", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Fehler" }, { status: 500 });
   }

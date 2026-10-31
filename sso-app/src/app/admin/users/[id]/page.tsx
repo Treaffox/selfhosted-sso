@@ -12,6 +12,8 @@ import { PageTitle } from "@/components/ui/page-title";
 import { toast } from "sonner";
 import { useI18n } from "@/components/i18n-provider";
 import { dateLocale } from "@/lib/i18n/core";
+import { GUEST_ACCOUNT_DEFAULT_MINUTES } from "@/lib/guest-account-duration";
+import { GuestDuration } from "../guest-duration";
 
 interface UserDetail {
   id: string;
@@ -20,6 +22,7 @@ interface UserDetail {
   isMaster: boolean;
   forcePasswordChange: boolean;
   totpVerified: boolean;
+  expiresAt: string | null;
   failedAttempts: number;
   lockedUntil: string | null;
   createdAt: string;
@@ -46,6 +49,9 @@ export default function UserDetailPage() {
 
   // Edit state
   const [newPassword, setNewPassword] = useState("");
+  const [removeFactors, setRemoveFactors] = useState(true);
+  const [inviteUrl, setInviteUrl] = useState<{ url: string; until: string } | null>(null);
+  const [guestMinutes, setGuestMinutes] = useState<number | null>(GUEST_ACCOUNT_DEFAULT_MINUTES);
   const [newEmail, setNewEmail] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [allApps, setAllApps] = useState<AppOption[]>([]);
@@ -80,6 +86,7 @@ export default function UserDetailPage() {
       const data = await res.json();
       if (!res.ok) { toast.error(te(data.error)); return; }
       toast.success(t("Gespeichert"));
+      if (data.inviteUrl) setInviteUrl({ url: data.inviteUrl, until: new Date(data.inviteExpiresAt).toLocaleString(dateLocale(locale), { dateStyle: "medium", timeStyle: "short" }) });
       fetchUser();
     } catch { toast.error(t("Fehler")); }
     finally { setSaving(false); }
@@ -125,11 +132,15 @@ export default function UserDetailPage() {
             <div className="flex justify-between gap-2"><span className="text-muted shrink-0">ID</span><span className="font-mono text-xs truncate">{user.id}</span></div>
             <div className="flex justify-between"><span className="text-muted">{t("E-Mail")}</span><span>{user.email ?? "–"}</span></div>
             <div className="flex justify-between"><span className="text-muted">{t("Erstellt")}</span><span>{new Date(user.createdAt).toLocaleDateString(dateLocale(locale))}</span></div>
+            {user.expiresAt && (
+              <div className="flex justify-between"><span className="text-muted">{t("Gültig bis")}</span><span>{new Date(user.expiresAt).toLocaleString(dateLocale(locale), { dateStyle: "medium", timeStyle: "short" })}</span></div>
+            )}
             <div className="flex justify-between"><span className="text-muted">{t("Sitzungen")}</span><span>{user._count.sessions}</span></div>
             <div className="flex justify-between">
               <span className="text-muted">{t("Status")}</span>
               <div className="flex gap-1">
                 {user.lockedUntil && <Badge variant="danger">{t("Gesperrt")}</Badge>}
+                {user.expiresAt && <Badge variant="warning">{t("Gastkonto")}</Badge>}
                 {user.forcePasswordChange && <Badge variant="warning">{t("PW ändern")}</Badge>}
                 {user.totpVerified && <Badge variant="success">TOTP</Badge>}
                 {user._count.passkeys > 0 && <Badge variant="success">{t("Passkey")}</Badge>}
@@ -149,10 +160,48 @@ export default function UserDetailPage() {
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder={t("Neues Passwort")}
               />
-              <Button size="sm" className="mt-2" onClick={() => { save({ password: newPassword }); setNewPassword(""); }} loading={saving} disabled={!newPassword}>
-                {t("Passwort ändern")}
-              </Button>
+              <label className="flex items-start gap-2 mt-2 cursor-pointer">
+                <input type="checkbox" checked={removeFactors} onChange={(e) => setRemoveFactors(e.target.checked)} className="w-4 h-4 mt-0.5 accent-foreground" />
+                <span className="text-xs text-muted">
+                  {t("Passkeys, Authenticator und Wiederherstellungscodes entfernen (empfohlen)")}
+                </span>
+              </label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <Button size="sm" onClick={() => { save({ password: newPassword, removeSecondFactors: removeFactors }); setNewPassword(""); }} loading={saving} disabled={!newPassword}>
+                  {t("Passwort ändern")}
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => save({ sendInvite: true, removeSecondFactors: removeFactors })} loading={saving}>
+                  {t("Einladungslink senden")}
+                </Button>
+              </div>
+              {inviteUrl && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs text-muted">{t("Link zum Festlegen des Passworts (einmalig, gültig bis {date}). Bei hinterlegter E-Mail-Adresse wurde er dorthin gesendet.", { date: inviteUrl.until })}</p>
+                  <Input readOnly value={inviteUrl.url} onFocus={(e) => e.currentTarget.select()} />
+                </div>
+              )}
             </div>
+            {!user.isMaster && (
+              <div>
+                <label className="block text-xs text-muted uppercase tracking-wider mb-1.5">
+                  {user.expiresAt ? t("Gastkonto verlängern (ab jetzt)") : t("In Gastkonto umwandeln")}
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <GuestDuration onChange={setGuestMinutes} />
+                  <Button size="sm" onClick={() => save({ guestMinutes })} loading={saving} disabled={guestMinutes === null}>
+                    {user.expiresAt ? t("Gültigkeit setzen") : t("Zum Gastkonto machen")}
+                  </Button>
+                  {user.expiresAt && (
+                    <Button size="sm" variant="secondary" onClick={() => save({ guestMinutes: null })} loading={saving}>
+                      {t("Reguläres Konto daraus machen")}
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted mt-1.5">
+                  {t("Gastkonten haben nur ein Passwort (nie MFA) und erreichen nur Apps, die du ihnen freigibst. Nach Ablauf wird das Konto gelöscht.")}
+                </p>
+              </div>
+            )}
             <div>
               <Input
                 label={t("E-Mail ändern")}

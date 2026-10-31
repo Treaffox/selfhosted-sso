@@ -28,6 +28,7 @@ export async function PUT(request: Request) {
     await logAudit("SETTINGS_SITE_UPDATED", {}, session.user.id, getClientIp(request));
     return NextResponse.json({ success: true, site: result.value });
   } catch (error) {
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
     console.error("[SITE SETTINGS ERROR]", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Fehler" }, { status: 500 });
   }

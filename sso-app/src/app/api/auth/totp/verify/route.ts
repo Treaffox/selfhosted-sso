@@ -1,3 +1,4 @@
+import { guestAccountForbidden, isGuestAccount } from "@/lib/guest-account";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { verifyTotp, logAudit } from "@/lib/auth";
@@ -13,6 +14,7 @@ export async function POST(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Nicht authentifiziert" }, { status: 401 });
   }
+  if (isGuestAccount(session.user)) return guestAccountForbidden();
   const userId = session.user.id;
 
   const rl = checkRateLimit(`totpsetup:${userId}`, 10, 15 * 60 * 1000);

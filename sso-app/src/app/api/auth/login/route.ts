@@ -11,15 +11,14 @@ import {
   verifyRecoveryCode,
   logLogin,
   logAudit,
-  checkAccountLock,
-  hasRecentLogin,
 } from "@/lib/auth";
 import { checkIpStatus, getClientIp } from "@/lib/ip";
 import { getSecuritySettings } from "@/lib/security-settings";
 import { rateLimitLogin } from "@/lib/rate-limit";
 import { findTrustedDevice, getTrustedDeviceTokenFromRequest } from "@/lib/session";
 import { usernameSchema, totpCodeSchema, emailCodeSchema, recoveryCodeSchema } from "@/lib/validation";
-import { burnPasswordCheck, completeLogin, guardCredentialAttempt, resolveAppContext } from "@/lib/login-flow";
+import { isExpired, isGuestAccount } from "@/lib/guest-account";
+import { burnPasswordCheck, completeLogin, GENERIC_LOGIN_ERROR, guardCredentialAttempt, resolveAppContext } from "@/lib/login-flow";
 
 const MAX_STATE_LENGTH = 512;
 
@@ -101,14 +100,8 @@ async function handleUsername(body: Record<string, unknown>, ip: string, userAge
     });
   }
 
-  // A locked account is only refused for unfamiliar IPs (so strangers can't keep the owner out)
-  const lockStatus = await checkAccountLock(user.id);
-  if (lockStatus.locked && !(await hasRecentLogin(user.id, ip, userAgent))) {
-    return NextResponse.json(
-      { error: "Konto gesperrt. Versuche es später erneut.", lockedUntil: lockStatus.until },
-      { status: 423 }
-    );
-  }
+  // A lock is NOT announced here: that would reveal which usernames exist. The password step refuses
+  // (with the same answer as a wrong password) unless the request comes from a familiar browser.
 
   const ipStatus = await checkIpStatus(user.id, ip);
 
@@ -128,7 +121,6 @@ async function handleUsername(body: Record<string, unknown>, ip: string, userAge
 
 // ─── Step 2: Password ─────────────────────────────────
 
-const GENERIC_LOGIN_ERROR = "Benutzername oder Passwort falsch";
 
 async function handlePassword(
   body: Record<string, unknown>,
@@ -150,8 +142,11 @@ async function handlePassword(
     return NextResponse.json({ error: GENERIC_LOGIN_ERROR }, { status: 401 });
   }
 
-  const blocked = await guardCredentialAttempt(loginSession.userId, ip, userAgent);
-  if (blocked) return blocked;
+  const blocked = await guardCredentialAttempt(loginSession.userId, ip, userAgent, GENERIC_LOGIN_ERROR);
+  if (blocked) {
+    await burnPasswordCheck(password); // same cost as an unknown user or a wrong password
+    return blocked;
+  }
 
   const user = await db.user.findUnique({
     where: { id: loginSession.userId },
@@ -165,6 +160,7 @@ async function handlePassword(
       totpSecret: true,
       totpVerified: true,
       sessionDurationHours: true,
+      expiresAt: true,
     },
   });
 
@@ -179,6 +175,16 @@ async function handlePassword(
     await recordFailedAttempt(user.id);
     await logLogin(user.id, ip, userAgent, false, "PASSWORD", "invalid_password");
     return NextResponse.json({ error: GENERIC_LOGIN_ERROR }, { status: 401 });
+  }
+
+  // Guest account past its date: same answer as a wrong password
+  if (isExpired(user)) {
+    return NextResponse.json({ error: GENERIC_LOGIN_ERROR }, { status: 401 });
+  }
+
+  // Guest accounts never have a second factor: the password is enough
+  if (isGuestAccount(user)) {
+    return await completeLogin(loginSession, user, ip, userAgent, "PASSWORD_GUEST_ACCOUNT");
   }
 
   // Password correct – check if MFA required

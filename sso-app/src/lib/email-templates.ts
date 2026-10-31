@@ -287,16 +287,14 @@ const templates: Record<string, Template> = {
   },
 
   "welcome": {
-    preheader: (_d, b, t) => t("Dein {site} Konto wurde erstellt. Melde dich an und ändere dein Passwort.", { site: b.siteName }),
+    preheader: (_d, b, t) => t("Dein {site} Konto wurde erstellt. Lege jetzt dein Passwort fest.", { site: b.siteName }),
     body: (d, b, t) =>
       heading(t("Willkommen bei {site}", { site: b.siteName })) +
-      paragraph(t("{hello}, dein SSO-Konto wurde erstellt. Melde dich an und ändere dein Passwort:", { hello: hello(d, t) })) +
-      infoTable([
-        [t("Benutzername"), d.username],
-        [t("Initialpasswort"), d.initialPassword, true],
-      ]) +
-      button(String(d.ssoUrl), t("Jetzt anmelden"), t("Button funktioniert nicht? Öffne diesen Link:")) +
-      paragraph(t("Bitte ändere dein Passwort nach der ersten Anmeldung und lösche diese E-Mail anschließend."), { muted: true, center: true, mt: 16, mb: 0 }),
+      paragraph(t("{hello}, dein SSO-Konto wurde erstellt. Lege über diesen Link dein Passwort fest:", { hello: hello(d, t) })) +
+      infoTable([[t("Benutzername"), d.username]]) +
+      button(String(d.inviteUrl), t("Passwort festlegen"), t("Button funktioniert nicht? Öffne diesen Link:")) +
+      paragraph(t("Der Link ist bis {until} gültig und funktioniert nur einmal. Teile ihn mit niemandem.", { until: escapeHtml(d.inviteUntil) }), { muted: true, center: true, mt: 16, mb: d.guestUntil ? 8 : 0 }) +
+      (d.guestUntil ? paragraph(t("Dein Gastzugang gilt bis {until}. Danach wird das Konto gelöscht.", { until: escapeHtml(d.guestUntil) }), { muted: true, center: true, mb: 0 }) : ""),
   },
 
   "test": {

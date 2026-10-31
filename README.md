@@ -90,6 +90,20 @@ docker compose exec -T db pg_dump -U sso sso | gzip > sso-$(date +%F).sql.gz    
 
 The database (PostgreSQL 17) only listens inside the Docker network. The compose file keeps auto-updaters (Watchtower, WUD) away from the database container, because an automatic jump to a new major version makes the database unusable.
 
+**Moving to PostgreSQL 18.** The app runs on PostgreSQL 18 as well (tested). A major version can't be started on the old data directory, so an existing installation has to be dumped and restored. Keep the old volume until everything works:
+
+```bash
+docker compose stop sso                                                              # 1. stop the app first: nothing may be written after the dump
+docker compose exec -T db pg_dump -U sso --clean --if-exists sso > sso-pg17.sql    # 2. dump
+docker compose down                                                                  # 3. stop (volumes stay)
+# 4. docker-compose.yml, service "db": image: postgres:18-alpine and a NEW volume mounted at
+#    /var/lib/postgresql (PostgreSQL 18 images no longer use /var/lib/postgresql/data), e.g. sso-pgdata18
+docker compose up -d db
+until docker compose logs db 2>&1 | grep -q "init process complete"; do sleep 1; done  # 5. wait for the first-start setup to finish
+docker compose exec -T db psql -U sso -d sso -v ON_ERROR_STOP=1 < sso-pg17.sql      # 6. restore
+docker compose up -d sso
+```
+
 ## Configuration reference (`.env`)
 
 | Variable | Required | Meaning |
@@ -117,7 +131,7 @@ npx prisma migrate deploy && npx prisma db seed
 npm run dev          # http://localhost:8122
 ```
 
-Stack: Next.js 15 (App Router), TypeScript, Tailwind 3.4, Prisma 6, PostgreSQL 17, `@simplewebauthn`, `otplib`, `jose`, `nodemailer`, `sharp`.
+Stack: Next.js 16 (App Router), TypeScript, Tailwind 3.4, Prisma 6, PostgreSQL 17, `@simplewebauthn`, `otplib`, `jose`, `nodemailer`, `sharp`.
 
 Translations: the German source text is the key (`t("Anmelden")`), English lives in `sso-app/src/lib/i18n/en`. `npm run i18n:check` lists missing entries (CI runs it).
 

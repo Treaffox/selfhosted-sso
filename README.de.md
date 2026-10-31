@@ -90,6 +90,20 @@ docker compose exec -T db pg_dump -U sso sso | gzip > sso-$(date +%F).sql.gz    
 
 Die Datenbank (PostgreSQL 17) lauscht nur im Docker-Netz. Die Compose-Datei sperrt Auto-Updater (Watchtower, WUD) für den Datenbank-Container, weil ein automatischer Sprung auf eine neue Hauptversion die Datenbank unbrauchbar macht.
 
+**Wechsel auf PostgreSQL 18.** Die App läuft auch mit PostgreSQL 18 (getestet). Eine neue Hauptversion startet nicht auf dem alten Datenverzeichnis, deshalb wird eine bestehende Installation per Dump/Restore umgezogen. Das alte Volume bleibt bis zum Schluss erhalten:
+
+```bash
+docker compose stop sso                                                              # 1. App zuerst stoppen: nach dem Dump darf nichts mehr geschrieben werden
+docker compose exec -T db pg_dump -U sso --clean --if-exists sso > sso-pg17.sql    # 2. Dump
+docker compose down                                                                  # 3. stoppen (Volumes bleiben)
+# 4. docker-compose.yml, Dienst "db": image: postgres:18-alpine und ein NEUES Volume, eingehängt unter
+#    /var/lib/postgresql (PostgreSQL-18-Images nutzen /var/lib/postgresql/data nicht mehr), z. B. sso-pgdata18
+docker compose up -d db
+until docker compose logs db 2>&1 | grep -q "init process complete"; do sleep 1; done  # 5. warten, bis die Ersteinrichtung durch ist
+docker compose exec -T db psql -U sso -d sso -v ON_ERROR_STOP=1 < sso-pg17.sql      # 6. Restore
+docker compose up -d sso
+```
+
 ## Konfigurationsreferenz (`.env`)
 
 | Variable | Pflicht | Bedeutung |
@@ -117,7 +131,7 @@ npx prisma migrate deploy && npx prisma db seed
 npm run dev          # http://localhost:8122
 ```
 
-Stack: Next.js 15 (App Router), TypeScript, Tailwind 3.4, Prisma 6, PostgreSQL 17, `@simplewebauthn`, `otplib`, `jose`, `nodemailer`, `sharp`.
+Stack: Next.js 16 (App Router), TypeScript, Tailwind 3.4, Prisma 6, PostgreSQL 17, `@simplewebauthn`, `otplib`, `jose`, `nodemailer`, `sharp`.
 
 Neue Migration nach einer Schema-Änderung: `npx prisma migrate dev --name <name>`.
 

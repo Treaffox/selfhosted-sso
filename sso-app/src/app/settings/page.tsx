@@ -24,6 +24,7 @@ interface UserProfile {
   mobileAppEnabled: boolean;
   avatarUpdatedAt: string | null;
   locale: string | null;
+  expiresAt: string | null;
   createdAt: string;
   _count: { passkeys: number; recoveryCodes: number; trustedDevices: number };
   passkeys: { id: string; deviceName: string; createdAt: string }[];
@@ -165,6 +166,15 @@ export default function SettingsPage() {
       {passwordPrompt}
       <h1 className="text-xl sm:text-2xl font-black">{t("Einstellungen")}</h1>
 
+      {profile.expiresAt && (
+        <div className="bg-surface-light border border-border rounded-lg p-4">
+          <p className="text-sm font-bold">{t("Gastkonto")}</p>
+          <p className="text-xs text-muted mt-1">
+            {t("Dein Zugang gilt bis {date}. Danach wird das Konto gelöscht. Du hast nur Zugriff auf die Apps, die dir freigegeben wurden.", { date: new Date(profile.expiresAt).toLocaleString(dateLocale(locale), { dateStyle: "medium", timeStyle: "short" }) })}
+          </p>
+        </div>
+      )}
+
       {profile.forcePasswordChange && (
         <div className="bg-danger/10 border border-danger/20 rounded-lg p-4">
           <p className="text-sm font-bold text-danger">
@@ -271,21 +281,20 @@ export default function SettingsPage() {
           ) : (
             <div className="mt-3 space-y-3">
               <p className="text-xs text-muted">
-                {tn("Wir haben einen 6-stelligen Code an {email} gesendet. Er ist 10 Minuten gültig.", {
+                {tn("Wir haben einen 8-stelligen Code an {email} gesendet. Er ist 10 Minuten gültig.", {
                   email: <span className="font-bold text-foreground">{pendingEmail}</span>,
                 })}
               </p>
               <Input
                 label={t("Bestätigungscode")}
-                inputMode="numeric"
                 autoComplete="one-time-code"
-                maxLength={6}
+                maxLength={9}
                 value={emailCode}
-                onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, ""))}
-                placeholder="123456"
+                onChange={(e) => setEmailCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""))}
+                placeholder="ABCD-EFGH"
               />
               <div className="flex gap-2">
-                <Button size="sm" onClick={verifyEmail} loading={verifying} disabled={emailCode.length !== 6}>
+                <Button size="sm" onClick={verifyEmail} loading={verifying} disabled={emailCode.replace(/-/g, "").length !== 8}>
                   {t("Bestätigen")}
                 </Button>
                 <Button size="sm" variant="secondary" onClick={cancelEmailChange}>
@@ -312,6 +321,8 @@ export default function SettingsPage() {
             </Link>
           </div>
 
+          {!profile.expiresAt && (
+          <>
           <div className="flex flex-wrap items-center justify-between gap-2 py-2 border-t border-border">
             <div>
               <p className="text-sm font-bold">{t("Google Authenticator (TOTP)")}</p>
@@ -363,6 +374,9 @@ export default function SettingsPage() {
               <Button size="sm" variant="secondary">{t("Verwalten")}</Button>
             </Link>
           </div>
+
+          </>
+          )}
 
           <div className="flex items-center justify-between py-2 border-t border-border">
             <div>

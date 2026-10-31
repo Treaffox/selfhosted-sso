@@ -14,8 +14,11 @@ import type {
   AuthenticatorTransportFuture,
 } from "@simplewebauthn/types";
 import { db } from "./db";
-import { encrypt, decrypt, sha256, generateToken, generateNumericCode, generateRecoveryCodes } from "./crypto";
+import { encrypt, decrypt, sha256, generateToken, generateEmailCode, generateRecoveryCodes, normalizeEmailCode } from "./crypto";
+import { blindIndex } from "./data-crypto";
 import { getAvatarUrl } from "./avatar";
+import { isInternalLoginToken } from "./pending";
+import { effectivePermission, isExpired } from "./guest-account";
 import { logAudit } from "./audit";
 import { getRpId, getWebAuthnOrigin } from "./config";
 import { getSiteSettings } from "./site-settings";
@@ -119,6 +122,7 @@ export async function createLoginSession(ipAddress: string, options?: LoginSessi
 }
 
 export async function getLoginSession(token: string) {
+  if (isInternalLoginToken(token)) return null;
   const session = await db.loginSession.findUnique({ where: { token } });
   if (!session || session.expiresAt < new Date()) {
     if (session) await db.loginSession.delete({ where: { id: session.id } }).catch(() => {});
@@ -170,6 +174,11 @@ export function decryptTotpSecret(encrypted: string): string {
 
 // ─── Email Codes ──────────────────────────────────────
 
+/** Only a keyed hash of an e-mail code is stored (bound to account and purpose), never the code itself. */
+function emailCodeHash(userId: string, type: string, code: string): string {
+  return blindIndex(`emailcode:${userId}:${type}`, code);
+}
+
 export async function createEmailCode(
   userId: string,
   type: "LOGIN_MFA" | "EMAIL_CHANGE"
@@ -180,11 +189,11 @@ export async function createEmailCode(
     data: { used: true },
   });
 
-  const code = generateNumericCode(6);
+  const code = generateEmailCode();
   await db.emailCode.create({
     data: {
       userId,
-      code,
+      code: emailCodeHash(userId, type, code),
       type,
       expiresAt: new Date(Date.now() + EMAIL_CODE_TTL),
     },
@@ -199,18 +208,15 @@ export async function verifyEmailCode(
   type: string
 ): Promise<boolean> {
   const emailCode = await db.emailCode.findFirst({
-    where: { userId, code, type, used: false, expiresAt: { gt: new Date() } },
+    where: { userId, code: emailCodeHash(userId, type, normalizeEmailCode(code)), type, used: false, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: "desc" },
   });
 
   if (!emailCode) return false;
 
-  await db.emailCode.update({
-    where: { id: emailCode.id },
-    data: { used: true },
-  });
-
-  return true;
+  // Redeem exactly once: of several parallel requests with the same code only one flips `used`
+  const redeemed = await db.emailCode.updateMany({ where: { id: emailCode.id, used: false }, data: { used: true } });
+  return redeemed.count === 1;
 }
 
 // ─── Recovery Codes ───────────────────────────────────
@@ -241,11 +247,9 @@ export async function verifyRecoveryCode(
 
   for (const rc of codes) {
     if (await bcrypt.compare(code, rc.codeHash)) {
-      await db.recoveryCode.update({
-        where: { id: rc.id },
-        data: { used: true, usedAt: new Date() },
-      });
-      return true;
+      // Single use, also against parallel requests with the same code
+      const redeemed = await db.recoveryCode.updateMany({ where: { id: rc.id, used: false }, data: { used: true, usedAt: new Date() } });
+      return redeemed.count === 1;
     }
   }
 
@@ -305,22 +309,24 @@ export async function exchangeAuthCode(code: string, appTokenHash: string) {
   // Get user info
   const user = await db.user.findUnique({
     where: { id: authCode.userId },
-    select: { id: true, username: true, email: true, avatarUpdatedAt: true },
+    select: { id: true, username: true, email: true, avatarUpdatedAt: true, expiresAt: true },
   });
+  // The account may be gone (or a guest account may have run out) since the code was issued
+  if (!user || isExpired(user)) return null;
 
   // Permission may have been revoked since the code was issued
   const current = await db.userAppPermission.findUnique({
     where: { userId_appId: { userId: authCode.userId, appId: authCode.appId } },
     select: { permissionLevel: true },
   });
-  const permission = current?.permissionLevel ?? authCode.app.defaultPermission;
+  const permission = effectivePermission(current?.permissionLevel, authCode.app.defaultPermission, user);
 
   await logAudit("APP_TOKEN_EXCHANGED", { permission }, authCode.userId, undefined, { appId: authCode.appId, appName: authCode.app.name, authVia: "APP_TOKEN", useSession: false });
 
   return {
-    user_id: user?.id,
-    username: user?.username,
-    picture: user ? getAvatarUrl(user) : null,
+    user_id: user.id,
+    username: user.username,
+    picture: getAvatarUrl(user),
     permission,
     // Guest logins: the app should end its own session no later than this
     ...(authCode.guestGrant ? { guest: true, expires_at: authCode.guestGrant.expiresAt.toISOString() } : {}),
@@ -393,10 +399,13 @@ export async function generatePasskeyAuthenticationOptions(userId?: string) {
       where: { userId },
       select: { credentialId: true, transports: true },
     });
-    allowCredentials = passkeys.map((p) => ({
-      id: p.credentialId,
-      transports: p.transports ? JSON.parse(p.transports) : undefined,
-    }));
+    // No passkeys: omit the list, exactly like for an unknown username
+    if (passkeys.length > 0) {
+      allowCredentials = passkeys.map((p) => ({
+        id: p.credentialId,
+        transports: p.transports ? JSON.parse(p.transports) : undefined,
+      }));
+    }
   }
 
   return generateAuthenticationOptions({
@@ -463,10 +472,11 @@ export async function logLogin(
   userAgent: string | undefined,
   success: boolean,
   method: string,
-  reason?: string
+  reason?: string,
+  deviceHash?: string
 ) {
   await db.loginHistory.create({
-    data: { userId, ipAddress, userAgent, success, method, reason },
+    data: { userId, ipAddress, userAgent, success, method, reason, deviceHash },
   });
 
   // Failed attempts also go to the audit log (successful logins are logged by the caller

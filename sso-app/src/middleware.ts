@@ -4,6 +4,8 @@ import { sessionCookieName } from "./lib/config";
 const PUBLIC_PATHS = [
   "/documentation",
   "/auth/login",
+  "/auth/invite", // invitation link: the invited person has no account access yet
+  "/api/auth/invite",
   "/api/auth/login",
   "/api/auth/verify",
   "/api/auth/token",

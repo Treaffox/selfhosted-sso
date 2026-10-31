@@ -23,11 +23,13 @@ export async function POST(request: NextRequest) {
     const loginToken = typeof body?.loginToken === "string" ? body.loginToken.slice(0, 128) : null;
 
     const loginSession = loginToken ? await getLoginSession(loginToken) : null;
-    if (!loginSession?.userId) {
+    if (!loginSession) {
       return NextResponse.json({ error: "Ungültige Sitzung" }, { status: 400 });
     }
 
-    const options = await generatePasskeyAuthenticationOptions(loginSession.userId);
+    // A session of an unknown username gets options too (without a credential list), so asking for options
+    // doesn't reveal whether the username exists. The verify step then fails like a wrong passkey.
+    const options = await generatePasskeyAuthenticationOptions(loginSession.userId ?? undefined);
 
     // Store challenge in login session (single use, see verify)
     await updateLoginSession(loginSession.token, {

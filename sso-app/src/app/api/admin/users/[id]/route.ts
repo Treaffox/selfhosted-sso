@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hashPassword, logAudit } from "@/lib/auth";
+import { generateToken } from "@/lib/crypto";
+import { createInvite, removeSecondFactors } from "@/lib/invite";
+import { guestAccountExpiry } from "@/lib/guest-account";
+import { parseGuestMinutes } from "@/lib/guest-account-duration";
+import { sendWelcomeEmail } from "@/lib/email";
 import { passwordSchema, emailSchema } from "@/lib/validation";
 import { getClientIp, setIpRule } from "@/lib/ip";
 
@@ -27,6 +32,7 @@ export async function GET(
       forcePasswordChange: true,
       totpVerified: true,
       mobileAppEnabled: true,
+      expiresAt: true,
       failedAttempts: true,
       lockedUntil: true,
       createdAt: true,
@@ -69,6 +75,9 @@ export async function PATCH(
 
   try {
     const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
+    }
     const updates: Record<string, unknown> = {};
 
     if (body.password !== undefined) {
@@ -82,6 +91,40 @@ export async function PATCH(
       await db.session.deleteMany({ where: { userId: id } });
       await db.trustedDevice.deleteMany({ where: { userId: id } });
       await db.guestGrant.deleteMany({ where: { userId: id } });
+    }
+
+    // Guest account: `guestMinutes` sets (or extends) the lifetime from now on, null makes it a regular account again
+    if (body.guestMinutes !== undefined) {
+      const target = await db.user.findUnique({ where: { id }, select: { isMaster: true } });
+      if (!target) return NextResponse.json({ error: "Nutzer nicht gefunden" }, { status: 404 });
+      if (body.guestMinutes === null) {
+        updates.expiresAt = null;
+        // A regular account needs a second factor again (when MFA is required): it has to set one up before it reaches apps
+      } else {
+        const minutes = parseGuestMinutes(body.guestMinutes);
+        if (minutes === null) return NextResponse.json({ error: "Ungültige Gültigkeitsdauer" }, { status: 400 });
+        if (target.isMaster || id === session.user.id) return NextResponse.json({ error: "Dieses Konto kann kein Gastkonto sein" }, { status: 400 });
+        updates.expiresAt = guestAccountExpiry(minutes);
+      }
+    }
+
+    // Invitation link instead of a typed password: the old password stops working, the person chooses a new one
+    let inviteUrl: string | undefined;
+    let inviteExpiresAt: Date | undefined;
+    let mailed = false;
+    if (body.sendInvite === true) {
+      const target = await db.user.findUnique({ where: { id }, select: { id: true, username: true, email: true, locale: true, expiresAt: true } });
+      if (!target) return NextResponse.json({ error: "Nutzer nicht gefunden" }, { status: 404 });
+      const until = (updates.expiresAt as Date | null | undefined) !== undefined ? (updates.expiresAt as Date | null) : target.expiresAt;
+      updates.passwordHash = await hashPassword(generateToken(24));
+      updates.forcePasswordChange = true;
+      await db.session.deleteMany({ where: { userId: id } });
+      await db.trustedDevice.deleteMany({ where: { userId: id } });
+      await db.guestGrant.deleteMany({ where: { userId: id } });
+      const invite = await createInvite(id, until);
+      inviteUrl = invite.url;
+      inviteExpiresAt = invite.expiresAt;
+      mailed = target.email ? await sendWelcomeEmail(target.email, target.username, inviteUrl, invite.expiresAt, until, target.locale).catch(() => false) : false;
     }
 
     if (body.email !== undefined) {
@@ -108,6 +151,13 @@ export async function PATCH(
 
     if (Object.keys(updates).length > 0) {
       await db.user.update({ where: { id }, data: updates });
+    }
+
+    // After a reset: optionally also drop passkeys / authenticator / recovery codes (recommended, but the admin decides)
+    const credentialsReset = body.password !== undefined || body.sendInvite === true;
+    if (credentialsReset && body.removeSecondFactors === true) {
+      await removeSecondFactors(id);
+      await logAudit("SECOND_FACTORS_REMOVED", { userId: id }, session.user.id, getClientIp(request));
     }
 
     // Handle permission updates ({ appId, permissionLevel } assigns, { appId, remove: true } falls back to the app default)
@@ -150,9 +200,10 @@ export async function PATCH(
       getClientIp(request)
     );
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, inviteUrl, inviteExpiresAt, mailed });
   } catch (error) {
-    console.error("[UPDATE USER ERROR]", error);
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
+    console.error("[UPDATE USER ERROR]", error instanceof Error ? error.name : "unbekannter Fehler");
     return NextResponse.json({ error: "Fehler beim Aktualisieren" }, { status: 500 });
   }
 }

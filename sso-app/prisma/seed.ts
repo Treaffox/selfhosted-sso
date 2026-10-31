@@ -8,14 +8,16 @@ async function main() {
   const username = process.env.MASTER_USERNAME || "admin";
   const password = process.env.MASTER_PASSWORD || "admin";
 
-  if (password === "admin" || password === "CHANGE-ME-set-a-strong-initial-password") {
-    console.warn("⚠  WARNING: Using default/weak master password. Change MASTER_PASSWORD in .env!");
-  }
-
   const existing = await db.user.findFirst({ where: { isMaster: true } });
   if (existing) {
     console.log(`Master account already exists: ${existing.username}`);
     return;
+  }
+
+  // The placeholder of .env.example is public knowledge: a master account with it would be open to everyone who read the README
+  if (password === "admin" || password === "CHANGE-ME-set-a-strong-initial-password") {
+    console.error("✗ MASTER_PASSWORD ist noch der Platzhalter bzw. Standardwert – kein Master-Konto angelegt. Bitte ein eigenes, starkes Passwort in .env setzen.");
+    process.exit(1);
   }
 
   if (password.length < 8) {

@@ -1,3 +1,4 @@
+import { guestAccountForbidden, isGuestAccount } from "@/lib/guest-account";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { generateTotpSecret, encryptTotpSecret, getTotpUri } from "@/lib/auth";
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Nicht authentifiziert" }, { status: 401 });
   }
+  if (isGuestAccount(session.user)) return guestAccountForbidden();
 
   const body = await request.json().catch(() => null);
   const reauth = await requireReauth(session.user.id, body?.currentPassword, "totp-setup", getClientIp(request));

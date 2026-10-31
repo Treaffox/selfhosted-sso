@@ -28,6 +28,7 @@ model User {
   sessionDurationHours Int?     // null = use server default (SESSION_MAX_AGE_HOURS)
   avatarUpdatedAt     DateTime? // null = no profile picture; also used as cache-busting version
   locale              String?   // "de" | "en"; null = automatic (browser language / IP country)
+  expiresAt           DateTime? // set = guest account: needs no MFA, only reaches apps it was explicitly granted, deleted after this moment (lib/guest-account.ts)
   guestLoginEnabled   Boolean   @default(true)  // others may ask for a guest access to an app (never for the master account)
   deviceLoginEnabled  Boolean   @default(true)  // this account may be signed in on another device via approval
   createdAt           DateTime  @default(now())
@@ -46,6 +47,8 @@ model User {
   avatar         UserAvatar?
   deviceLoginRequests DeviceLoginRequest[]
   guestGrants    GuestGrant[]
+
+  @@index([expiresAt])
 }
 
 // Profile picture bytes live in their own table so regular User queries never load the blob.
@@ -327,9 +330,12 @@ model LoginHistory {
   success   Boolean
   method    String   // PASSKEY | PASSWORD_TOTP | PASSWORD_EMAIL | PASSWORD_IP_WHITELIST | RECOVERY_CODE
   reason    String?  // failure reason
+  deviceHash String? // blindIndex of the browser's `sso_dev` cookie (successful logins only), see lib/device-cookie.ts
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, deviceHash])
 }
 
 // ─── Trusted Devices ─────────────────────────────────

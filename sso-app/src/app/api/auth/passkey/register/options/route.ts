@@ -1,3 +1,5 @@
+import { guestAccountForbidden, isGuestAccount } from "@/lib/guest-account";
+import { passkeyRegistrationToken } from "@/lib/pending";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
@@ -11,6 +13,7 @@ export async function POST(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Nicht authentifiziert" }, { status: 401 });
   }
+  if (isGuestAccount(session.user)) return guestAccountForbidden();
 
   const body = await request.json().catch(() => null);
   const reauth = await requireReauth(session.user.id, body?.currentPassword, "passkey-add", getClientIp(request));
@@ -24,7 +27,7 @@ export async function POST(request: Request) {
 
     // Store challenge temporarily (overwrite any existing). Only a request that passed the password
     // check above can create one, so /register/verify can't be used without it.
-    const token = `passkey-reg-${session.user.id}`;
+    const token = passkeyRegistrationToken(session.user.id);
     await db.loginSession.deleteMany({ where: { token } });
     await db.loginSession.create({
       data: {

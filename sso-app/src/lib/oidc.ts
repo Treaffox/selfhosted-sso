@@ -1,3 +1,4 @@
+import { effectivePermission, isExpired } from "./guest-account";
 import * as jose from "jose";
 import crypto from "crypto";
 import { db } from "./db";
@@ -46,13 +47,17 @@ export async function getJWKS(): Promise<{ keys: jose.JWK[] }> {
   return { keys: [jwk] };
 }
 
-/** The user's level for an app: the explicit assignment, otherwise the app's default. */
-async function resolvePermission(userId: string, app: { id: string; defaultPermission: string }): Promise<string> {
-  const permission = await db.userAppPermission.findUnique({
-    where: { userId_appId: { userId, appId: app.id } },
-    select: { permissionLevel: true },
-  });
-  return permission?.permissionLevel ?? app.defaultPermission;
+/**
+ * The user's level for an app: the explicit assignment, otherwise the app's default (guest accounts: DENY).
+ * `accountUntil` is set for guest accounts: tokens never outlive the account; `gone` = account missing or already expired.
+ */
+async function resolvePermission(userId: string, app: { id: string; defaultPermission: string }): Promise<{ level: string; accountUntil: Date | null; gone: boolean }> {
+  const [permission, user] = await Promise.all([
+    db.userAppPermission.findUnique({ where: { userId_appId: { userId, appId: app.id } }, select: { permissionLevel: true } }),
+    db.user.findUnique({ where: { id: userId }, select: { expiresAt: true } }),
+  ]);
+  if (!user || isExpired(user)) return { level: "DENY", accountUntil: null, gone: true };
+  return { level: effectivePermission(permission?.permissionLevel, app.defaultPermission, user), accountUntil: user.expiresAt, gone: false };
 }
 
 /** Guest access an issued token belongs to: the token never outlives it. */
@@ -62,9 +67,12 @@ export interface GuestLimit {
 }
 
 /** Lifetime in seconds: the regular one, shortened to the remaining time of a guest grant. */
-function ttlFor(regular: number, guest?: GuestLimit): number {
-  if (!guest) return regular;
-  return Math.max(1, Math.min(regular, Math.floor((guest.expiresAt.getTime() - Date.now()) / 1000)));
+function ttlFor(regular: number, guest?: GuestLimit, accountUntil?: Date | null): number {
+  let ttl = regular;
+  for (const until of [guest?.expiresAt, accountUntil]) {
+    if (until) ttl = Math.min(ttl, Math.floor((until.getTime() - Date.now()) / 1000));
+  }
+  return Math.max(1, ttl);
 }
 
 export async function generateIdToken(
@@ -73,7 +81,8 @@ export async function generateIdToken(
   scopes: string[],
   nonce?: string,
   permission?: string,
-  guest?: GuestLimit
+  guest?: GuestLimit,
+  accountUntil?: Date | null
 ): Promise<string> {
   const user = await db.user.findUnique({
     where: { id: userId },
@@ -89,7 +98,7 @@ export async function generateIdToken(
     iss: issuer,
     sub: user.id,
     aud: clientId,
-    exp: now + ttlFor(ID_TOKEN_TTL, guest),
+    exp: now + ttlFor(ID_TOKEN_TTL, guest, accountUntil),
     iat: now,
     auth_time: now,
   };
@@ -118,10 +127,11 @@ export async function generateAccessToken(
   userId: string,
   clientId: string,
   scopes: string[],
-  guest?: GuestLimit
+  guest?: GuestLimit,
+  accountUntil?: Date | null
 ): Promise<{ token: string; expiresIn: number }> {
   const token = generateToken(32);
-  const expiresIn = ttlFor(ACCESS_TOKEN_TTL, guest);
+  const expiresIn = ttlFor(ACCESS_TOKEN_TTL, guest, accountUntil);
 
   await db.oAuthAccessToken.create({
     data: {
@@ -175,10 +185,11 @@ export async function validateAccessToken(token: string) {
   }
 
   // Access revoked since the token was issued
-  const permission = await resolvePermission(accessToken.userId, accessToken.app);
-  if (permission === "DENY") {
+  const resolved = await resolvePermission(accessToken.userId, accessToken.app);
+  if (resolved.gone || resolved.level === "DENY") {
     return null;
   }
+  const permission = resolved.level;
 
   return {
     user: accessToken.user,
@@ -224,7 +235,7 @@ export async function createOIDCAuthCode(
   const app = await db.app.findUnique({ where: { id: appId } });
   if (!app) throw new Error("App not found");
 
-  const permissionLevel = await resolvePermission(userId, app);
+  const permissionLevel = (await resolvePermission(userId, app)).level;
 
   await db.authCode.create({
     data: {
@@ -290,8 +301,9 @@ export async function exchangeOIDCCode(
   }
 
   // The level may have been changed or revoked since the code was issued: the token carries the current one
-  const permission = await resolvePermission(authCode.userId, app);
-  if (permission === "DENY") return null;
+  const resolved = await resolvePermission(authCode.userId, app);
+  if (resolved.gone || resolved.level === "DENY") return null;
+  const permission = resolved.level;
 
   // Redeem exactly once: of several parallel requests only one flips `used` from false to true
   const redeemed = await db.authCode.updateMany({ where: { id: authCode.id, used: false }, data: { used: true } });
@@ -299,8 +311,8 @@ export async function exchangeOIDCCode(
 
   const scopes = authCode.scopes ? JSON.parse(authCode.scopes) as string[] : ["openid"];
   const guest = authCode.guestGrant ?? undefined;
-  const { token: accessToken, expiresIn } = await generateAccessToken(authCode.userId, clientId, scopes, guest);
-  const idToken = await generateIdToken(authCode.userId, clientId, scopes, authCode.nonce ?? undefined, permission, guest);
+  const { token: accessToken, expiresIn } = await generateAccessToken(authCode.userId, clientId, scopes, guest, resolved.accountUntil);
+  const idToken = await generateIdToken(authCode.userId, clientId, scopes, authCode.nonce ?? undefined, permission, guest, resolved.accountUntil);
 
   await logAudit("OIDC_TOKEN_ISSUED", { scopes, permission, ...(guest ? { guest: true } : {}) }, authCode.userId, undefined, { appId: app.id, appName: app.name, authVia: "OIDC_CODE", useSession: false });
 
