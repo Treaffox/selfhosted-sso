@@ -1,5 +1,7 @@
 # SSO
 
+## This app is vibecoded using Claude Code.
+
 Self-hosted single sign-on server with passkeys, MFA and OpenID Connect. It runs on your own server, belongs to you and looks like your service: name, logo, favicon, email delivery and footer are set in the browser, not in code.
 
 > The interface is available in English and German. Every user picks their language in the settings; without a choice it is German for a German browser language or an IP address from Germany, Austria or Switzerland, otherwise English. [Deutsche Version](README.de.md)
