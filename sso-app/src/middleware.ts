@@ -9,6 +9,7 @@ const PUBLIC_PATHS = [
   "/api/auth/login",
   "/api/auth/verify",
   "/api/auth/token",
+  "/api/auth/users", // app token is the authentication (server-to-server)
   "/api/auth/passkey/authenticate",
   "/api/auth/passkey/authenticate/options",
   "/api/auth/email-code/send",
@@ -27,7 +28,7 @@ const PUBLIC_PATHS = [
 const PROTECTED_PAGES = ["/admin", "/settings"];
 
 /** Server-to-server / token endpoints: called without the browser session cookie, so no CSRF concern. */
-const CSRF_EXEMPT = ["/oauth/token", "/api/auth/token", "/oauth/userinfo"];
+const CSRF_EXEMPT = ["/oauth/token", "/api/auth/token", "/api/auth/users", "/oauth/userinfo"];
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 

@@ -170,6 +170,14 @@ const EVENTS: Record<string, EventDef> = {
     category: "APP",
     text: ({ app, d, t }) => t("Code-Einlösung für {app} fehlgeschlagen ({reason})", { app, reason: d.reason ? t(str(d.reason)) : t("ungültiger Code oder App-Token") }),
   },
+  APP_USERS_LISTED: {
+    category: "APP",
+    text: ({ app, d, t }) => t("{app} hat die Liste der Konten mit Zugriff abgerufen ({count})", { app, count: str(d.count) }),
+  },
+  APP_USERS_LIST_FAILED: {
+    category: "APP",
+    text: ({ d, t }) => t("Kontenabfrage einer App fehlgeschlagen ({reason})", { reason: d.reason ? t(str(d.reason)) : t("falscher App-Token") }),
+  },
   OIDC_TOKEN_ISSUED: {
     category: "OIDC",
     text: ({ actor, app, t }) => t("{app} hat Tokens für {actor} abgeholt", { app, actor }),

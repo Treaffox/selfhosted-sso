@@ -400,6 +400,29 @@ const user = await res.json();
                   Jede Anwendung definiert eigene Berechtigungsstufen (mindestens{" "}
                   <InlineCode>ALLOW</InlineCode> und <InlineCode>DENY</InlineCode>).
                   Hat ein Nutzer <InlineCode>DENY</InlineCode>, bricht{" "}
+                <p>
+                  <strong className="text-foreground">Konten mit Zugriff abfragen (optional).</strong>{" "}
+                  Mit demselben App-Token kann dein Backend schreibgeschützt abfragen, welche
+                  Konten Zugriff auf deine Anwendung haben, etwa um Nutzer anzuzeigen, bevor sie
+                  sich dort je angemeldet haben:
+                </p>
+                <CodeBlock>{`const res = await fetch("${appUrl}/api/auth/users", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ app_token: process.env.SSO_APP_TOKEN }),
+});
+const { users } = await res.json();
+// [{ user_id, username, permission, picture }, ...]  (nach username sortiert)`}</CodeBlock>
+                <p>
+                  Die Liste enthält alle regulären Konten, deren Berechtigungsstufe für deine
+                  Anwendung nicht <InlineCode>DENY</InlineCode> ist – ausdrücklich zugewiesen oder
+                  über die Standardstufe der Anwendung. Gastkonten erscheinen nie. Wer in der
+                  Liste fehlt, hat keinen Zugriff. Es werden nur{" "}
+                  <InlineCode>user_id</InlineCode>, <InlineCode>username</InlineCode>,{" "}
+                  <InlineCode>permission</InlineCode> und <InlineCode>picture</InlineCode> geliefert
+                  (keine E-Mail-Adressen). Ruf den Endpunkt nur bei Bedarf ab, nicht bei jeder
+                  Anfrage.
+                </p>
                   <InlineCode>/oauth/authorize</InlineCode> mit{" "}
                   <InlineCode>error=access_denied</InlineCode> ab, bevor überhaupt ein
                   Code ausgestellt wird – deine App muss diesen Fall nur noch
@@ -667,6 +690,9 @@ location @sso_login {
                 />
               </Section>
 
+                    ["/api/auth/users", "400", "Body ist kein gültiges JSON-Objekt."],
+                    ["/api/auth/users", "401", "App-Token fehlt, ist falsch oder die Anwendung ist deaktiviert."],
+                    ["/api/auth/users", "429", "Zu viele Anfragen von dieser IP-Adresse."],
               <Section id="support" title="Support">
                 <p>
                   Fragen zur Integration, Anträge auf neue App-Zugangsdaten oder

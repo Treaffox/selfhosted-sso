@@ -279,6 +279,19 @@ const user = await res.json();
 
           <Section id="berechtigungen" title="Permissions (permission levels)">
             <p>
+              <strong className="text-foreground">Listing accounts with access (optional).</strong> With the same app token your backend can query, read-only, which accounts have access to your application, for example to show people before they have ever signed in there:
+            </p>
+            <CodeBlock>{`const res = await fetch("${appUrl}/api/auth/users", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ app_token: process.env.SSO_APP_TOKEN }),
+});
+const { users } = await res.json();
+// [{ user_id, username, permission, picture }, ...]  (sorted by username)`}</CodeBlock>
+            <p>
+              The list contains every regular account whose permission level for your application is not <InlineCode>DENY</InlineCode> – assigned explicitly or via the application's default level. Guest accounts never appear. Anyone missing from the list has no access. Only <InlineCode>user_id</InlineCode>, <InlineCode>username</InlineCode>, <InlineCode>permission</InlineCode> and <InlineCode>picture</InlineCode> are returned (no e-mail addresses). Call it when needed, not on every request.
+            </p>
+            <p>
               Every application defines its own permission levels (at least <InlineCode>ALLOW</InlineCode> and <InlineCode>DENY</InlineCode>). If a user has <InlineCode>DENY</InlineCode>, <InlineCode>/oauth/authorize</InlineCode> aborts with{" "}
               <InlineCode>error=access_denied</InlineCode> before a code is even issued – your app only has to display this case in a friendly way.
             </p>
@@ -495,6 +508,9 @@ location @sso_login {
                 ["/api/auth/verify", "400", "Neither app_id nor X-App-Token given."],
                 ["/api/auth/verify", "401", "No or expired SSO session."],
                 ["/api/auth/verify", "403", "DENY permission, application disabled/unknown, or password change required."],
+                ["/api/auth/users", "400", "Body is not a valid JSON object."],
+                ["/api/auth/users", "401", "App token missing, wrong or the application is disabled."],
+                ["/api/auth/users", "429", "Too many requests from this IP address."],
               ]}
             />
           </Section>
