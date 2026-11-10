@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { createOIDCAuthCode } from "@/lib/oidc";
+import { grantedScopes, parseAllowedScopes } from "@/lib/oidc-scopes";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/ip";
 import { getPublicBaseUrl } from "@/lib/avatar";
@@ -75,10 +76,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const scopes = scope.split(" ").filter(Boolean);
-  if (!scopes.includes("openid")) {
-    scopes.unshift("openid");
-  }
+  // The app only receives the scopes the admin allowed for it (App.allowedScopes); the rest is dropped
+  const scopes = grantedScopes(scope.split(" ").filter(Boolean), parseAllowedScopes(app.allowedScopes));
 
   const session = await getSession();
 

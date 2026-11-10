@@ -12,6 +12,7 @@ import { PageTitle } from "@/components/ui/page-title";
 import { toast } from "sonner";
 import { DnsRecordsCard } from "@/components/admin/dns-records-card";
 import { useI18n } from "@/components/i18n-provider";
+import { OPTIONAL_SCOPES } from "@/lib/oidc-scopes";
 
 interface AppDetail {
   id: string;
@@ -288,6 +289,31 @@ export default function AppDetailPage() {
                 <Badge variant={app.oidcEnabled ? "success" : "danger"}>
                   {app.oidcEnabled ? t("Aktiv") : t("Deaktiviert")}
                 </Badge>
+              </div>
+              <div>
+                <p className="text-xs text-muted mb-1.5 uppercase tracking-wider">{t("Erlaubte Scopes")}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-md border bg-foreground text-background border-foreground opacity-60">openid</span>
+                  {OPTIONAL_SCOPES.map((scope) => {
+                    const on = app.allowedScopes.includes(scope);
+                    return (
+                      <button
+                        key={scope}
+                        onClick={() => save({ allowedScopes: on ? app.allowedScopes.filter((s) => s !== scope) : [...app.allowedScopes, scope] })}
+                        className={`text-xs font-bold px-2.5 py-1 rounded-md border transition-colors ${
+                          on
+                            ? "bg-foreground text-background border-foreground"
+                            : "border-border text-muted hover:text-foreground"
+                        }`}
+                      >
+                        {scope}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted/70 mt-1.5">
+                  {t("Fordert die App mehr Scopes an, bekommt sie nur die erlaubten. profile: Benutzername und Profilbild, email: E-Mail-Adresse. openid ist immer dabei.")}
+                </p>
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="secondary" onClick={() => save({ oidcEnabled: !app.oidcEnabled })} loading={saving}>

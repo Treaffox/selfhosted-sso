@@ -218,6 +218,9 @@ const profile = await res.json();
               Still link accounts via <InlineCode>sub</InlineCode>, never via the address.
             </p>
             <p>
+              The administration decides per app which scopes it receives: <InlineCode>profile</InlineCode> and <InlineCode>email</InlineCode> can be switched off individually, <InlineCode>openid</InlineCode> is always included. If the app asks for more, it only gets the allowed ones; the <InlineCode>scope</InlineCode> field of the token endpoint response states what was actually granted. Unknown scopes are ignored.
+            </p>
+            <p>
               The access token is valid for one hour. There is currently no refresh token grant – after expiry a new redirect to <InlineCode>/oauth/authorize</InlineCode> yields a new token without a login prompt thanks to the existing SSO session.
             </p>
           </Section>
@@ -275,9 +278,6 @@ const user = await res.json();
             <p>
               <InlineCode>permission</InlineCode> is the user's permission level for your application (see Permissions). The app token belongs exclusively in your backend – never in browser code or a repository.
             </p>
-          </Section>
-
-          <Section id="berechtigungen" title="Permissions (permission levels)">
             <p>
               <strong className="text-foreground">Listing accounts with access (optional).</strong> With the same app token your backend can query, read-only, which accounts have access to your application, for example to show people before they have ever signed in there:
             </p>
@@ -291,6 +291,9 @@ const { users } = await res.json();
             <p>
               The list contains every regular account whose permission level for your application is not <InlineCode>DENY</InlineCode> – assigned explicitly or via the application's default level. Guest accounts never appear. Anyone missing from the list has no access. Only <InlineCode>user_id</InlineCode>, <InlineCode>username</InlineCode>, <InlineCode>permission</InlineCode> and <InlineCode>picture</InlineCode> are returned (no e-mail addresses). Call it when needed, not on every request.
             </p>
+          </Section>
+
+          <Section id="berechtigungen" title="Permissions (permission levels)">
             <p>
               Every application defines its own permission levels (at least <InlineCode>ALLOW</InlineCode> and <InlineCode>DENY</InlineCode>). If a user has <InlineCode>DENY</InlineCode>, <InlineCode>/oauth/authorize</InlineCode> aborts with{" "}
               <InlineCode>error=access_denied</InlineCode> before a code is even issued – your app only has to display this case in a friendly way.
@@ -505,12 +508,12 @@ location @sso_login {
                 ["/api/auth/token", "400", "Body is not valid JSON or code/app_token are missing."],
                 ["/api/auth/token", "401", "Code invalid, expired, already used, or the app token doesn't match the application."],
                 ["/api/auth/token", "429", "Too many requests from this IP address."],
-                ["/api/auth/verify", "400", "Neither app_id nor X-App-Token given."],
-                ["/api/auth/verify", "401", "No or expired SSO session."],
-                ["/api/auth/verify", "403", "DENY permission, application disabled/unknown, or password change required."],
                 ["/api/auth/users", "400", "Body is not a valid JSON object."],
                 ["/api/auth/users", "401", "App token missing, wrong or the application is disabled."],
                 ["/api/auth/users", "429", "Too many requests from this IP address."],
+                ["/api/auth/verify", "400", "Neither app_id nor X-App-Token given."],
+                ["/api/auth/verify", "401", "No or expired SSO session."],
+                ["/api/auth/verify", "403", "DENY permission, application disabled/unknown, or password change required."],
               ]}
             />
           </Section>

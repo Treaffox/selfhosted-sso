@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { generateAppToken, logAudit } from "@/lib/auth";
 import { generateClientCredentials } from "@/lib/oidc";
+import { normalizeAllowedScopes, parseAllowedScopes } from "@/lib/oidc-scopes";
 import { appNameSchema, redirectUriSchema, permissionLevelSchema } from "@/lib/validation";
 import { getClientIp } from "@/lib/ip";
 
@@ -41,7 +42,7 @@ export async function GET(
     ...safe,
     permissionLevels: JSON.parse(app.permissionLevels),
     redirectUris: JSON.parse(app.redirectUris),
-    allowedScopes: app.allowedScopes ? JSON.parse(app.allowedScopes) : ["openid", "profile", "email"],
+    allowedScopes: parseAllowedScopes(app.allowedScopes),
   });
 }
 
@@ -124,6 +125,13 @@ export async function PATCH(
 
     if (body.oidcEnabled !== undefined) {
       updates.oidcEnabled = !!body.oidcEnabled;
+    }
+
+    // Which scopes the app may receive (openid is always included)
+    if (body.allowedScopes !== undefined) {
+      const scopes = normalizeAllowedScopes(body.allowedScopes);
+      if (!scopes) return NextResponse.json({ error: "Ungültige Scopes" }, { status: 400 });
+      updates.allowedScopes = JSON.stringify(scopes);
     }
 
     // Regenerate token

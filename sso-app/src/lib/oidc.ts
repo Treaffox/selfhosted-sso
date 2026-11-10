@@ -5,6 +5,7 @@ import { db } from "./db";
 import { generateToken, sha256 } from "./crypto";
 import { getAvatarUrl } from "./avatar";
 import { logAudit } from "./audit";
+import { grantedScopes, parseAllowedScopes, SUPPORTED_SCOPES } from "./oidc-scopes";
 import { getAppUrl } from "./config";
 
 const ACCESS_TOKEN_TTL = 3600; // 1 hour
@@ -194,7 +195,7 @@ export async function validateAccessToken(token: string) {
   return {
     user: accessToken.user,
     app: accessToken.app,
-    scopes: JSON.parse(accessToken.scopes) as string[],
+    scopes: grantedScopes(JSON.parse(accessToken.scopes) as string[], parseAllowedScopes(accessToken.app.allowedScopes)),
     permission,
     guest: !!accessToken.guestGrant,
   };
@@ -309,7 +310,8 @@ export async function exchangeOIDCCode(
   const redeemed = await db.authCode.updateMany({ where: { id: authCode.id, used: false }, data: { used: true } });
   if (redeemed.count !== 1) return null;
 
-  const scopes = authCode.scopes ? JSON.parse(authCode.scopes) as string[] : ["openid"];
+  // The admin may have narrowed the app's scopes since the code was issued: the token carries the current limit
+  const scopes = grantedScopes(authCode.scopes ? JSON.parse(authCode.scopes) as string[] : ["openid"], parseAllowedScopes(app.allowedScopes));
   const guest = authCode.guestGrant ?? undefined;
   const { token: accessToken, expiresIn } = await generateAccessToken(authCode.userId, clientId, scopes, guest, resolved.accountUntil);
   const idToken = await generateIdToken(authCode.userId, clientId, scopes, authCode.nonce ?? undefined, permission, guest, resolved.accountUntil);
@@ -334,7 +336,7 @@ export function getOIDCConfiguration() {
     userinfo_endpoint: `${issuer}/oauth/userinfo`,
     jwks_uri: `${issuer}/.well-known/jwks.json`,
     registration_endpoint: undefined,
-    scopes_supported: ["openid", "profile", "email"],
+    scopes_supported: [...SUPPORTED_SCOPES],
     response_types_supported: ["code"],
     response_modes_supported: ["query"],
     grant_types_supported: ["authorization_code"],

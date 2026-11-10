@@ -8,6 +8,7 @@ import { getPublicBaseUrl } from "./avatar";
 import { checkAccountLock, createAuthCode, getLoginSession } from "./auth";
 import { isFamiliarDevice } from "./device-cookie";
 import { createOIDCAuthCode } from "./oidc";
+import { grantedScopes, parseAllowedScopes } from "./oidc-scopes";
 import { completeLogin, resolveAppContext } from "./login-flow";
 import { checkRateLimit, rateLimitDeviceRequestPerAccount } from "./rate-limit";
 import { createGuestGrant } from "./guest-access";
@@ -77,8 +78,7 @@ export async function resolveOidcRequest(returnTo: unknown): Promise<OidcRequest
   if (app.clientType === "public" && !codeChallenge) return null;
   if (codeChallenge && codeChallengeMethod !== "S256") return null;
 
-  const scopes = (p.get("scope") ?? "openid").split(" ").filter(Boolean);
-  if (!scopes.includes("openid")) scopes.unshift("openid");
+  const scopes = grantedScopes((p.get("scope") ?? "openid").split(" ").filter(Boolean), parseAllowedScopes(app.allowedScopes));
 
   return {
     appId: app.id,

@@ -301,6 +301,13 @@ const profile = await res.json();
                   Verknüpfe Konten dennoch über <InlineCode>sub</InlineCode>, nie über die Adresse.
                 </p>
                 <p>
+                  Welche Scopes eine App bekommt, legt die Administration pro App fest:{" "}
+                  <InlineCode>profile</InlineCode> und <InlineCode>email</InlineCode> lassen sich einzeln
+                  abschalten, <InlineCode>openid</InlineCode> ist immer dabei. Fordert die App mehr an,
+                  bekommt sie nur die erlaubten; das Feld <InlineCode>scope</InlineCode> der Antwort am
+                  Token-Endpunkt nennt, was tatsächlich gewährt wurde. Unbekannte Scopes werden ignoriert.
+                </p>
+                <p>
                   Das Access Token ist eine Stunde gültig. Es gibt derzeit keinen
                   Refresh-Token-Grant – nach Ablauf führt eine erneute Weiterleitung
                   zu <InlineCode>/oauth/authorize</InlineCode> dank bestehender
@@ -393,13 +400,6 @@ const user = await res.json();
                   gehört ausschließlich in dein Backend – niemals in Browser-Code oder
                   ein Repository.
                 </p>
-              </Section>
-
-              <Section id="berechtigungen" title="Berechtigungen (Permission Levels)">
-                <p>
-                  Jede Anwendung definiert eigene Berechtigungsstufen (mindestens{" "}
-                  <InlineCode>ALLOW</InlineCode> und <InlineCode>DENY</InlineCode>).
-                  Hat ein Nutzer <InlineCode>DENY</InlineCode>, bricht{" "}
                 <p>
                   <strong className="text-foreground">Konten mit Zugriff abfragen (optional).</strong>{" "}
                   Mit demselben App-Token kann dein Backend schreibgeschützt abfragen, welche
@@ -423,6 +423,13 @@ const { users } = await res.json();
                   (keine E-Mail-Adressen). Ruf den Endpunkt nur bei Bedarf ab, nicht bei jeder
                   Anfrage.
                 </p>
+              </Section>
+
+              <Section id="berechtigungen" title="Berechtigungen (Permission Levels)">
+                <p>
+                  Jede Anwendung definiert eigene Berechtigungsstufen (mindestens{" "}
+                  <InlineCode>ALLOW</InlineCode> und <InlineCode>DENY</InlineCode>).
+                  Hat ein Nutzer <InlineCode>DENY</InlineCode>, bricht{" "}
                   <InlineCode>/oauth/authorize</InlineCode> mit{" "}
                   <InlineCode>error=access_denied</InlineCode> ab, bevor überhaupt ein
                   Code ausgestellt wird – deine App muss diesen Fall nur noch
@@ -683,6 +690,9 @@ location @sso_login {
                     ["/api/auth/token", "400", "Body ist kein gültiges JSON oder code/app_token fehlen."],
                     ["/api/auth/token", "401", "Code ungültig, abgelaufen, bereits verwendet oder App-Token passt nicht zur Anwendung."],
                     ["/api/auth/token", "429", "Zu viele Anfragen von dieser IP-Adresse."],
+                    ["/api/auth/users", "400", "Body ist kein gültiges JSON-Objekt."],
+                    ["/api/auth/users", "401", "App-Token fehlt, ist falsch oder die Anwendung ist deaktiviert."],
+                    ["/api/auth/users", "429", "Zu viele Anfragen von dieser IP-Adresse."],
                     ["/api/auth/verify", "400", "Weder app_id noch X-App-Token übergeben."],
                     ["/api/auth/verify", "401", "Keine oder abgelaufene SSO-Session."],
                     ["/api/auth/verify", "403", "Berechtigung DENY, Anwendung deaktiviert/unbekannt oder Passwortänderung erforderlich."],
@@ -690,9 +700,6 @@ location @sso_login {
                 />
               </Section>
 
-                    ["/api/auth/users", "400", "Body ist kein gültiges JSON-Objekt."],
-                    ["/api/auth/users", "401", "App-Token fehlt, ist falsch oder die Anwendung ist deaktiviert."],
-                    ["/api/auth/users", "429", "Zu viele Anfragen von dieser IP-Adresse."],
               <Section id="support" title="Support">
                 <p>
                   Fragen zur Integration, Anträge auf neue App-Zugangsdaten oder

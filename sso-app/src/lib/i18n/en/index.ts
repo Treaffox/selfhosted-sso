@@ -1058,4 +1058,7 @@ export const en: Record<string, string> = {
   "Tage": "Days",
   "Abgelaufen": "Expired",
   "Bitte eine Zahl größer als 0 eingeben, höchstens 10 Jahre.": "Enter a number greater than 0, 10 years at most.",
+  "Erlaubte Scopes": "Allowed scopes",
+  "Fordert die App mehr Scopes an, bekommt sie nur die erlaubten. profile: Benutzername und Profilbild, email: E-Mail-Adresse. openid ist immer dabei.": "If the app asks for more scopes it only gets the allowed ones. profile: username and picture, email: e-mail address. openid is always included.",
+  "Ungültige Scopes": "Invalid scopes",
 };
